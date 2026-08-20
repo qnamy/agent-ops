@@ -1,10 +1,10 @@
-# delegation.md — 위임 우선 + 모델 티어 매칭 (Claude Code 전용)
+# delegation.md — Delegation First + Model-Tier Matching (Claude Code only)
 
-> 전역 지침 §토큰 절약에서 분리한 상세 규칙. **harnie(`/harnie:dev*`) 실행 중에는 이 문서를 읽지도, 적용하지도 않는다** — 모델 배정은 harnie가 관리한다. 이 규칙은 harnie 밖 직접 작업(지침·harnie 자체 수정, 검색·조사 등)에서 실질 작업을 위임할 때만 적용한다.
+> Detail rules split out of the global §Token Economy. **Never read or apply this document while harnie (`/harnie:dev*`) is running** — model assignment is harnie's job. These rules apply only when delegating substantial work during direct (non-harnie) tasks: instruction or harnie maintenance, search and research, and the like.
 
-실질 작업(탐색·구현·기계적 편집·초안·리뷰)은 가능한 한 서브에이전트/GPT-MCP로 위임하고, 고비용 메인 세션은 오케스트레이션·최종 판단에 집중한다. 어느 정도 추론이 필요한 작업도 메인이 떠안지 말고 아래 티어로 나눠 보낸다.
+Delegate substantial work (exploration, implementation, mechanical edits, drafts, reviews) to subagents/GPT-MCP whenever possible, and keep the expensive main session focused on orchestration and final judgment. Even work that requires some reasoning should be split into the tiers below rather than absorbed by the main session.
 
-- **GPT 우선, 실패 시 Claude 폴백**: 기본 위임처는 GPT(codex MCP) — Claude usage를 소모하지 않는다. 쓰기가 필요하면 `sandbox=workspace-write`를 준다. Claude 서브에이전트는 (a) codex가 실패·거부하거나 구조적 제약에 걸릴 때(worktree git 메타데이터 쓰기, 이 세션의 MCP 툴(Slack·ADO 등)이 필요한 작업), (b) 크로스-모델 리뷰의 Claude 차례(GPT 산출물 검토)일 때 쓴다.
-- **Claude 서브에이전트**: 기계적·대량 작업(번역 미러·반복 편집·단순 탐색)=Haiku(`claude-haiku-4-5`), 일반 구현·중간 추론=Sonnet(`claude-sonnet-5`), 고난도 판단·리뷰=Opus(`claude-opus-5`).
-- **GPT (codex MCP)**: 고난도 추론=Sol(`gpt-5.6-sol`), 중간 추론·일반 구현=Terra(`gpt-5.6-terra`), 경량=Luna(`gpt-5.6-luna`), 기계적·대량=Spark(`gpt-5.3-codex-spark`).
-- **예외**: 단일 소규모 편집·단순 조회처럼 위임 오버헤드(프롬프트 작성+결과 수신)가 작업 자체보다 큰 것은 직접 한다.
+- **GPT first, Claude fallback**: the default delegate is GPT (codex MCP) — it consumes no Claude usage. Grant `sandbox=workspace-write` when writes are needed. Use Claude subagents when (a) codex fails, refuses, or hits a structural limit (git metadata writes in worktrees; tasks that need this session's MCP tools such as Slack/ADO), or (b) it is Claude's turn in a cross-model review (reviewing GPT output).
+- **Claude subagents**: mechanical/bulk work (translation mirrors, repetitive edits, simple exploration) = Haiku (`claude-haiku-4-5`); general implementation / mid-level reasoning = Sonnet (`claude-sonnet-5`); hard judgment / review = Opus (`claude-opus-5`).
+- **GPT (codex MCP)**: hard reasoning = Sol (`gpt-5.6-sol`); mid-level reasoning / general implementation = Terra (`gpt-5.6-terra`); light = Luna (`gpt-5.6-luna`); mechanical/bulk = Spark (`gpt-5.3-codex-spark`).
+- **Exception**: do directly anything where the delegation overhead (writing the prompt + receiving the result) exceeds the work itself — a single small edit, a simple lookup.

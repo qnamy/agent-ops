@@ -1,36 +1,36 @@
-# GIT.md — Git 커밋 · 푸시 · PR 생성 · 리뷰요청 라우팅 규칙
+# GIT.md — Commit · Push · PR Creation · Review-Request Routing
 
-"커밋해줘", "푸시해줘", "PR 생성해줘", "리뷰 요청해줘" 등의 요청 시 아래 규칙을 따른다.
+On requests like "커밋해줘", "푸시해줘", "PR 생성해줘", "리뷰 요청해줘", follow the rules below.
 
-## 컨텍스트 판별
+## Context Detection
 
-- `git remote get-url upstream`으로 upstream URL을 확인할 수 있으면 upstream을, 없으면 `git remote get-url origin`으로 origin URL을 확인한다.
-- remote URL에 `dev.azure.com` 또는 `ssh.dev.azure.com`이 포함되면 **회사**, `github.com`이 포함되면 **개인** 컨텍스트다.
-- remote URL로 판별할 수 없을 때만 디렉터리를 보조 신호로 사용한다. `~/Tradlinx` 하위는 회사 컨텍스트일 가능성이 높지만, 개인 GitHub 레포도 있으므로 디렉터리만으로 확정하지 않는다.
-- 보조 신호까지 확인해도 모호하면 사용자에게 회사/개인 컨텍스트를 질문한다.
+- If `git remote get-url upstream` resolves, use the upstream URL; otherwise check `git remote get-url origin`.
+- A remote URL containing `dev.azure.com` or `ssh.dev.azure.com` means **company** context; `github.com` means **personal**.
+- Use the directory only as a secondary signal when the remote URL is inconclusive. Anything under `~/Tradlinx` is likely company context, but personal GitHub repos live there too, so never decide on the directory alone.
+- If still ambiguous after the secondary signal, ask the user which context applies.
 
-## 공통 규칙
+## Common Rules
 
-- 커밋 변경사항 요약은 한국어, 100자 이내, 명령형 어투로 작성한다.
-- type은 `fix`, `feat`, `refactor`, `chore`, `docs`, `style`, `test`, `perf`, `ci` 중에서 고른다.
-- 커밋 전 `git add -A`로 모든 변경사항을 스테이징한다.
-- 필요시 본문(body)에 상세 변경 내용을 추가한다.
-- push는 `git remote`에 upstream이 있으면 upstream으로, 없으면 origin으로 한다.
-- `git push {remote} {현재브랜치}` 형식으로 실행한다.
+- Write the commit summary in Korean, within 100 characters, in the imperative mood.
+- Pick the type from `fix`, `feat`, `refactor`, `chore`, `docs`, `style`, `test`, `perf`, `ci`.
+- Stage all changes with `git add -A` before committing.
+- Add a detailed body when useful.
+- Push to upstream if `git remote` has one, otherwise to origin.
+- Run as `git push {remote} {current-branch}`.
 
-## 개인 (GitHub) 규칙
+## Personal (GitHub) Rules
 
-- 티켓 번호 규칙은 없다.
-- 커밋 제목은 `{type}: 변경사항 요약` 형식으로 작성한다.
-- 기본 워크플로는 브랜치를 새로 만들지 않고 `main`에서 직접 커밋·push한 뒤 PR 없이 종료하는 것이다.
-- 사용자가 PR 생성을 명시적으로 요청한 경우에만 임시 브랜치를 만들고 PR을 생성한다.
-  - PR 제목: `{type}: 요약` (티켓 없음)
-  - PR 본문: **변경사항만** 간결히 작성한다.
-  - 리뷰요청 단계는 없다.
-  - merge 후 임시 브랜치를 삭제한다.
+- No ticket-number convention.
+- Commit title format: `{type}: summary`.
+- Default workflow: commit directly on `main`, push, and finish without a PR.
+- Create a temporary branch and a PR only when the user explicitly asks for one:
+  - PR title: `{type}: summary` (no ticket)
+  - PR body: **changes only**, concise.
+  - No review-request step.
+  - Delete the temporary branch after merge.
 
-## 회사 (Azure DevOps) 규칙
+## Company (Azure DevOps) Rules
 
-회사 컨텍스트에서는 `~/Tradlinx/GIT-PR.md`를 읽고 따른다.
+In company context, read and follow `~/Tradlinx/GIT-PR.md`.
 
-PR 본문·리뷰요청 내용 작성 방법론(무엇)은 harnie 플러그인 `pr-delivery` 스킬(`/harnie:pr-delivery`)이 일반화 소스이며, 프로필(제목 규칙·본문 섹션 구성)은 위 컨텍스트별 규칙을 주입값으로 쓴다(선택적 참조).
+The methodology for writing PR body and review-request content (the "what") is generalized in the harnie plugin's `pr-delivery` skill (`/harnie:pr-delivery`); the profile (title convention, body section set) is injected from the per-context rules above (optional reference).
