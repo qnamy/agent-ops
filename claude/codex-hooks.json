@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/bakgyunam/workspace/agent-ops/scripts/hook-bash-guard.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/bakgyunam/workspace/agent-ops/scripts/hook-routine-sync.py"
+          }
+        ]
+      }
+    ]
+  }
+}
