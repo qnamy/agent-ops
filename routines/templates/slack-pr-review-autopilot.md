@@ -61,7 +61,7 @@ description: 업무시간 15분마다 #{review-channel} 채널을 폴링해 새 
 - 파일 위치/패키지 판단은 ls-files·working tree 가 아니라 `git -C {workspace}/{repo} ls-tree {sourceCommit}` 로 한다.
 - git 명령은 단일 `git -C {repo} …` 명령만 사용(cd·if·파이프·리다이렉션 없이). 레포 동기화는 fetch 먼저 → 실패 시 clone.
 - 리뷰 댓글은 위 "새 리뷰 스레드 생성" 방식으로 실제 변경 파일의 정확한 경로(filePath)와 sourceCommit 기준 실제 파일 라인 번호에 단다. content에는 `\n` 대신 실제 줄바꿈 문자를 쓴다.
-- 댓글 규칙: 각 댓글은 pr-review 스킬 분류에 따라 `issue:`/`discuss:`/`nit:` 접두어로 시작한다(수정·반증 필요=`issue:`, 답변·합의 필요=`discuss:`, 선택적 제안=`nit:`). 접두어 뒤 첫 줄에 PR 작성자(createdBy.id)를 멘션한다. **멘션 문법은 꺾쇠괄호까지 리터럴이다** — GUID 값만 치환하고 `<>`는 반드시 남긴다. 올바른 예: `@<{guid}>`. 꺾쇠 없이 `@{guid}…`처럼 쓰면 Azure DevOps가 멘션으로 렌더링하지 못하고 raw GUID가 그대로 노출된다(2026-08-18 PR {id}에서 발생한 실제 오류). 모든 댓글 마지막에 아래 2줄을 추가:
+- 댓글 규칙: 각 댓글은 pr-review 스킬 분류에 따라 `issue:`/`discuss:`/`nit:` 접두어로 시작한다(수정·반증 필요=`issue:`, 답변·합의 필요=`discuss:`, 선택적 제안=`nit:`). 접두어 뒤 첫 줄에 PR 작성자(createdBy.id)를 멘션한다. **멘션 문법은 꺾쇠괄호까지 리터럴이다** — GUID 값만 치환하고 `<>`는 반드시 남긴다. 올바른 예: `@<{guid}>`. 꺾쇠 없이 `@c8e28351-…`처럼 쓰면 Azure DevOps가 멘션으로 렌더링하지 못하고 raw GUID가 그대로 노출된다(2026-08-18 PR {id}에서 발생한 실제 오류). 모든 댓글 마지막에 아래 2줄을 추가:
   ```
   ⚠️ AI를 활용한 댓글 작성 테스트 중입니다. 댓글이 이상한 경우 신고해주세요.
   by Codex
