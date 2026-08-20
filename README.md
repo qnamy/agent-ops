@@ -17,7 +17,15 @@ guidelines/
 routines/
 ├── README.md        # "Claude 트리거 + GPT 실행" 루틴 아키텍처 (핵심 문서)
 └── templates/       # 루틴 5종 지시서 + wrapper + 디스패처 (새니타이즈 템플릿)
+scripts/
+├── sanitize.py      # 라이브 루틴 문서 → 템플릿 결정적 치환 + 유출 검사 내장 (실패 시 exit 1)
+├── sync-templates.sh# 치환 → 유출검사 → 변경 시 로컬 자동 커밋 (푸시는 사람이 확인 후)
+└── hook-routine-sync.py # Claude Code PostToolUse 훅 — 라이브 루틴 수정 감지 시 위 동기화 자동 실행
 ```
+
+템플릿은 라이브 루틴 문서의 치환본이며, PostToolUse 훅이 라이브 수정을 감지해 자동으로 재생성·커밋한다.
+공개 관문(push)만 사람이 남는다 — 자동 치환이 새 유형의 식별자를 놓치는 사고를 구조적으로 막기 위해서다.
+훅 등록 조각은 [scripts/hook-routine-sync.py](scripts/hook-routine-sync.py) 상단 주석에 있다.
 
 ## 설계 원칙
 
