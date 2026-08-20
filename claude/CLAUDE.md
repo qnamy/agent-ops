@@ -74,6 +74,11 @@ Before implementing:
 - No error handling for impossible scenarios.
 - If you write 200 lines and it could be 50, rewrite it.
 
+Overengineering is a defect, not a virtue:
+- No premature optimization. Discuss Big-O or optimize only when performance actually matters (hot path, large N, explicit constraint).
+- Apply DRY/SOLID only after the rule of three. No preemptive interfaces or abstractions for a single call site.
+- Defensive coding belongs at trust boundaries only (external input, API/DB/network responses, untrusted data). Don't blanket internal calls with null checks, and never let "robustness" excuse code growth.
+
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
 ### 3. Surgical Changes
