@@ -18,7 +18,7 @@ bash {workspace}/.routine-state/codex-wrappers/run-10min-routines.sh
 - `{workspace}/.routine-state/logs/qa-deploy-approval-autopilot.summary.txt`
 - `{workspace}/.routine-state/logs/azdo-pr-comment-resolver.summary.txt`
 
-**같은 이름의 `.log` 파일(전체 트랜스크립트, 수백 KB)은 절대 읽지 않는다** — 토큰 낭비다. 3개 summary 내용을 루틴별로 구분해 간결한 한국어로 정리·보고한다(있는 그대로 옮겨도 됨, 이미 짧다). summary에 `[mode: SKIPPED-LOCKED, ...]`가 있으면 "이전 회차 진행 중이라 스킵됨"으로 보고한다(오류 아님).
+**같은 이름의 `.log` 파일(전체 트랜스크립트, 수백 KB)은 절대 읽지 않는다** — 토큰 낭비다. 3개 summary 내용을 루틴별로 구분해 간결한 한국어로 정리·보고한다(있는 그대로 옮겨도 됨, 이미 짧다). summary에 `[mode: SKIPPED-LOCKED, ...]`가 있으면 "이전 회차 진행 중이라 스킵됨"으로, `[mode: SKIPPED-IDLE, ...]`가 있으면 "신규 활동 없어 조기 게이트에서 스킵됨(codex 미기동, 토큰 절감)"으로 보고한다(둘 다 오류 아님).
 
 ## 3단계: 오류 보고
 1단계 Bash 종료 코드가 0이 아니거나, 어느 summary든 끝의 `[mode: ..., exit: ...]`의 exit이 0이 아니면 해당 루틴을 "codex 실행 실패"로 명확히 보고하고, 상세 확인이 필요하면 그 루틴의 `.log` 파일 경로만 안내한다(이 경우에도 `.log`를 직접 읽지는 않는다 — 사용자가 필요시 직접 확인).
