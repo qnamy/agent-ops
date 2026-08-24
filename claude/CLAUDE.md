@@ -38,9 +38,10 @@ These are procedures needed only for specific requests, so they live in separate
 
 Minimize token use without hurting quality. **When this conflicts with quality or correctness, quality wins.**
 
-- **Partial reads**: for large files, narrow the location with Grep, then Read only that range with offset/limit. Full reads only when the file is small or whole-structure understanding is genuinely needed.
+- **Partial reads**: for large files, narrow the location with `rg` (or Grep), then Read only that range with offset/limit — or pull just the needed region in one step with `rg -n -C <n>`. Full reads only when the file is small or whole-structure understanding is genuinely needed.
 - **No re-reads**: never re-read a file already read in this session, including verification re-reads right after Edit/Write (failures surface as tool errors).
-- **Narrow exploration**: don't open files one by one; narrow candidates with Grep/Glob and read only what's needed.
+- **Narrow exploration**: don't open files one by one; narrow candidates with `rg`/Glob and read only what's needed.
+- **`rg` over the Grep tool [Claude Code only]**: where Bash is available (main session), run searches as single `rg` commands from the repo root with **relative paths**. Same ripgrep engine, but Grep-tool results prefix every output line with an absolute path (~70+ chars in a deep worktree) plus header lines, while relative `rg` output does not; `Bash(rg *)` is allowlisted so there is no prompt cost. A global PreToolUse hook (`agent-ops/scripts/hook-grep-guard.py`) enforces this by denying main-session Grep; Bash-less subagents (read-only agents) and `.harnie` paths keep Grep.
 - **Delegation first [Claude Code only]**: do development work through harnie (`/harnie:dev*`) whenever possible (harnie manages model assignment). For direct work outside harnie, when delegating substantial work (exploration, implementation, mechanical edits, drafts, review), read `~/workspace/agent-ops/claude/delegation.md` and distribute per its tiers (GPT first, Claude fallback). **Never read or apply delegation.md while harnie is running.**
 - **Concise output**: responses carry conclusions plus necessary evidence only. Don't re-quote whole files or documents you read. Run large-output commands filtered (`--quiet`, `tail`, `grep`, etc.).
 - **Reference docs on-demand**: never preload reference documents (GIT.md, PR-ADO.md, delegation.md, harnie instructions, etc.) without a trigger. Even then, read only the single document the task needs.
