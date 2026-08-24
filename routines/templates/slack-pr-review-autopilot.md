@@ -8,7 +8,7 @@ description: 업무시간 15분마다 #{review-channel} 채널을 폴링해 새 
 >
 > **실행 방식**: `codex exec`(headless, launchd 트리거)로 이 문서 전체를 프롬프트로 주입해 실행한다. 회사색 값(채널 ID·유저 ID·경로 등)은 아래 어디에도 하드코딩하지 않는다 — **실행 시작 시 `{workspace}/ROUTINE-CONFIG.md`를 먼저 읽어** 필요한 값을 얻는다(이 문서의 `{review_channel}` 등 중괄호 표기는 그 문서의 필드를 가리킨다). 판단 기준(pr-review 스킬)은 대상 PR이 확정된 뒤에만 읽는 원칙은 원본과 동일하다.
 >
-> **실행 시작 시각 캡처 (`{runStartedAt}`)**: ROUTINE-CONFIG.md를 읽기 직전, **지금 시각을 딱 한 번 확인해 `{runStartedAt}`에 고정**한다. 이후 이 실행 안에서는 "지금 시각"을 다시 계산하지 않고 **항상 이 캡처값만 재사용**한다(1단계 조회 상한도, 3.5단계에 기록할 새 `lastRunAt`도 전부 이 값). 리뷰 실행 자체가 몇 분 걸릴 수 있는데, 그 도중 다시 "지금"을 구하면 조회했던 구간과 실제로 기록되는 watermark 사이에 갭이 생겨 그 사이 메시지가 다음 실행에서도 영영 스캔되지 않는 사고가 난다 — 이를 막기 위한 규칙이다.
+> **실행 시작 시각 캡처 (`{runStartedAt}`·`{runStartedEpoch}`)**: ROUTINE-CONFIG.md를 읽기 직전, **지금 시각을 딱 한 번 확인해 `{runStartedAt}`(ISO8601)과 `{runStartedEpoch}`(`date +%s`, epoch 초)에 함께 고정**한다. 이후 이 실행 안에서는 "지금 시각"을 다시 계산하지 않고 **항상 이 캡처값만 재사용**한다(1단계 조회 상한도, 3.5단계에 기록할 새 `lastRunAt`도 전부 이 값). 리뷰 실행 자체가 몇 분 걸릴 수 있는데, 그 도중 다시 "지금"을 구하면 조회했던 구간과 실제로 기록되는 watermark 사이에 갭이 생겨 그 사이 메시지가 다음 실행에서도 영영 스캔되지 않는 사고가 난다 — 이를 막기 위한 규칙이다.
 >
 > **상태 파일(watermark)**: ROUTINE-CONFIG.md를 읽은 직후, `{workspace}/.routine-state/slack-pr-review-autopilot.state.json`을 읽는다. 파일이 없으면 `{ "lastRunAt": "<{runStartedAt} - 20분>", "reviewedPrs": [] }`로 취급한다(첫 실행 부트스트랩, 기존 20분 창과 동일). `lastRunAt`이 `{runStartedAt}`보다 96시간 이상 과거면 조회 하한을 "`{runStartedAt}` - 96시간"으로 캡핑하고 그 사실을 4단계 보고에 남긴다(무한 소급 방지).
 >
