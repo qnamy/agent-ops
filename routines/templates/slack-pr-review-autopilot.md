@@ -10,7 +10,7 @@ description: 업무시간 15분마다 #{review-channel} 채널을 폴링해 새 
 >
 > **실행 시작 시각 캡처 (`{runStartedAt}`·`{runStartedEpoch}`)**: ROUTINE-CONFIG.md를 읽기 직전, **지금 시각을 딱 한 번 확인해 `{runStartedAt}`(ISO8601)과 `{runStartedEpoch}`(`date +%s`, epoch 초)에 함께 고정**한다. 이후 이 실행 안에서는 "지금 시각"을 다시 계산하지 않고 **항상 이 캡처값만 재사용**한다(1단계 조회 상한도, 3.5단계에 기록할 새 `lastRunAt`도 전부 이 값). 리뷰 실행 자체가 몇 분 걸릴 수 있는데, 그 도중 다시 "지금"을 구하면 조회했던 구간과 실제로 기록되는 watermark 사이에 갭이 생겨 그 사이 메시지가 다음 실행에서도 영영 스캔되지 않는 사고가 난다 — 이를 막기 위한 규칙이다.
 >
-> **상태 파일(watermark)**: ROUTINE-CONFIG.md를 읽은 직후, `{workspace}/.routine-state/slack-pr-review-autopilot.state.json`을 읽는다. 파일이 없으면 `{ "lastRunAt": "<{runStartedAt} - 20분>", "reviewedPrs": [] }`로 취급한다(첫 실행 부트스트랩, 기존 20분 창과 동일). `lastRunAt`이 `{runStartedAt}`보다 96시간 이상 과거면 조회 하한을 "`{runStartedAt}` - 96시간"으로 캡핑하고 그 사실을 4단계 보고에 남긴다(무한 소급 방지).
+> **상태 파일(watermark)**: ROUTINE-CONFIG.md를 읽은 직후, `{workspace}/.routine-state/slack-pr-review-autopilot.state.json`을 읽는다. 파일이 없으면 `{ "lastRunAt": "<{runStartedAt} - 20분>", "lastRunTs": <{runStartedEpoch} - 1200>, "reviewedPrs": [] }`로 취급한다(첫 실행 부트스트랩, 기존 20분 창과 동일). `lastRunTs`는 `lastRunAt`과 같은 시각의 epoch 초 표현으로, 1단계 Slack 조회의 `oldest` 계산에 쓴다(아래 조회 방법 불변식). `lastRunAt`이 `{runStartedAt}`보다 96시간 이상 과거면 조회 하한을 "`{runStartedAt}` - 96시간"으로 캡핑하고 그 사실을 4단계 보고에 남긴다(무한 소급 방지).
 >
 > **Azure DevOps는 MCP가 아니라 `az` CLI로 호출한다.** codex의 `azure-devops` MCP 서버는 `repo_*` 도구 호출 시 MCP elicitation(대화형 확인)을 요구하는데 `codex exec`(headless)는 이를 지원하지 않아(`request_user_input is not supported in exec mode`, OpenAI Codex 이슈 #12694 미해결) 모든 MCP 호출이 실패한다. 대신 로컬 `az` CLI(이미 `az login` 인증됨)를 쓴다 — 아래 "ADO 호출 방식" 참고. Slack은 codex `slack` 플러그인(MCP)을 그대로 쓴다(정상 동작 확인됨).
 
