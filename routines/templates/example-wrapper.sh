@@ -75,7 +75,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${MODE_LABEL} 모드로 실행 (model=${MOD
 # (2026-08-21 qa-deploy-approval-autopilot에서 codex 내부 model-manager 자식 프로세스가 행에 걸려
 #  codex exec 자체가 반환하지 않은 채 2일 넘게 락을 물고 있던 사고의 재발 방지 — 이 시간 상한이 없으면
 #  락 회수는 "PID 생존 여부"만 보므로 프로세스가 살아있는 채로 멈추면 다음 회차들이 계속 스킵된다.)
-MAX_RUNTIME_SECS=480
+MAX_RUNTIME_SECS=1500
 codex exec -m "$MODEL" -s workspace-write --skip-git-repo-check -C "$HOME/{org}" -o "$SUMMARY_FILE" - < "$INSTR_FILE" >> "$LOG_FILE" 2>&1 &
 CODEX_PID=$!
 SECS_WAITED=0
