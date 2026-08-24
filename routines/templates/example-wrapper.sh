@@ -71,7 +71,26 @@ fi
 
 rm -f "$SUMMARY_FILE"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${MODE_LABEL} 모드로 실행 (model=${MODEL})" > "$LOG_FILE"
-codex exec -m "$MODEL" -s workspace-write --skip-git-repo-check -C "$HOME/{org}" -o "$SUMMARY_FILE" - < "$INSTR_FILE" >> "$LOG_FILE" 2>&1
+# 실행 시간 상한: 정상 완료는 수 분 내다. 상한을 넘기면 강제 종료해 락이 무한정 남지 않게 한다.
+# (2026-08-21 qa-deploy-approval-autopilot에서 codex 내부 model-manager 자식 프로세스가 행에 걸려
+#  codex exec 자체가 반환하지 않은 채 2일 넘게 락을 물고 있던 사고의 재발 방지 — 이 시간 상한이 없으면
+#  락 회수는 "PID 생존 여부"만 보므로 프로세스가 살아있는 채로 멈추면 다음 회차들이 계속 스킵된다.)
+MAX_RUNTIME_SECS=480
+codex exec -m "$MODEL" -s workspace-write --skip-git-repo-check -C "$HOME/{org}" -o "$SUMMARY_FILE" - < "$INSTR_FILE" >> "$LOG_FILE" 2>&1 &
+CODEX_PID=$!
+SECS_WAITED=0
+while kill -0 "$CODEX_PID" 2>/dev/null; do
+  if [ "$SECS_WAITED" -ge "$MAX_RUNTIME_SECS" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 실행이 ${MAX_RUNTIME_SECS}초를 넘어 강제 종료합니다 (pid ${CODEX_PID})" >> "$LOG_FILE"
+    kill -TERM "$CODEX_PID" 2>/dev/null
+    sleep 5
+    kill -KILL "$CODEX_PID" 2>/dev/null
+    break
+  fi
+  sleep 5
+  SECS_WAITED=$((SECS_WAITED + 5))
+done
+wait "$CODEX_PID" 2>/dev/null
 CODEX_EXIT=$?
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 종료 코드: ${CODEX_EXIT}" >> "$LOG_FILE"
 
