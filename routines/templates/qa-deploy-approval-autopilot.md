@@ -44,9 +44,8 @@ description: 평일 07~20시 10분 주기로 #{qa-deploy-channel} 배포 승인 
 
 ## 3단계: 티켓→PR 찾기 + 검토
 1. **PR 찾기** — az는 항상 `--org https://dev.azure.com/{ado_org}/` 포함, 단일 명령만. **조회 다이어트(필수)**: `--project` 없는 조직 전체 `az repos pr list`·`--top 1000`류 전량 덤프 금지, 모든 az 조회는 `--query`로 필요한 최소 필드만 추출한다 — 대형 JSON 덤프는 컨텍스트를 태우고 회차를 워치독 상한까지 끌고 간다(2026-08-24 실관측).
-   - **1순위**: 메시지의 ADO PR URL → `az repos pr show --id {PR_ID} --query "{id:pullRequestId,project:repository.project.name,repo:repository.name,title:title,source:sourceRefName,status:status}" -o json`.
-   - **2순위**: Jira MCP로 티켓을 조회해(원격 링크·개발 패널·본문/댓글) ADO PR URL을 찾는다 → 찾으면 위 pr show로 확정.
-   - **3순위**: 후보 프로젝트/레포를 좁힌 뒤 `az repos pr list --project {project} [--repository {repo}] --status all --top 50 --query "[?contains(sourceRefName,'{KEY}') || contains(title,'{KEY}')].{id:pullRequestId,title:title,repo:repository.name,status:status}" -o json`.
+   - **1순위 (정상 경로)**: 배포 승인 요청 메시지에는 **Jira 링크만 온다** — Jira MCP로 티켓을 조회해(원격 링크·개발 패널·본문/댓글) ADO PR URL을 찾고, `az repos pr show --id {PR_ID} --query "{id:pullRequestId,project:repository.project.name,repo:repository.name,title:title,source:sourceRefName,status:status}" -o json`으로 확정한다. (예외적으로 메시지에 PR URL이 직접 있으면 Jira 조회 없이 바로 pr show.)
+   - **2순위 (폴백)**: Jira에서 못 찾으면 후보 프로젝트/레포를 좁힌 뒤 `az repos pr list --project {project} [--repository {repo}] --status all --top 50 --query "[?contains(sourceRefName,'{KEY}') || contains(title,'{KEY}')].{id:pullRequestId,title:title,repo:repository.name,status:status}" -o json`.
    - **특정 실패 시**: ✅를 달지 않는다. {user} 답글 "해당 티켓의 PR을 자동으로 특정하지 못했습니다. 수동 확인 부탁드립니다." + 티켓 명시(멱등 마커) → **보류 등록**(`holdType=pr-not-found`).
 2. **기존 리뷰 확인(재검토 스킵 판정)**: `{pr_review_state_path}`를 Read(없으면 3항으로). 그 PR(project/repository/pullRequestId 모두 일치)이 `reviewedPrs`에 **있으면**:
    - **기존 issue 지적**: 단일 명령 `grep <PR_ID> {review_findings_path}`(PR 번호로만 필터, 파일/매치 없으면 지적 없음). 매치 중 그 PR의 `prefix=issue`만 대상. 있으면 `az devops invoke --area git --resource pullRequestThreads --route-parameters project={project} repositoryId={repo} pullRequestId={PR_ID} --api-version 7.1 --org https://dev.azure.com/{ado_org}/ -o json`으로 내({user}) `issue:` 스레드 중 `active`/`pending` 잔존 확인.
