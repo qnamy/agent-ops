@@ -17,6 +17,7 @@
 - **비자명한 신규 코드**(새 기능·모듈·복잡 로직) → `~/Tradlinx/harnie/agents/harnie-builder.md` (아래 §코딩 가이드라인에 종속; 직접 작업 시 루프 전용 부분은 무시)
 - **아키텍처 설계 / 리뷰**(시스템 경계·컨테이너·데이터 소유권·기술 선택) → `~/Tradlinx/harnie/agents/harnie-designer.md` + 출력 계약 `~/Tradlinx/harnie/instructions/design-authoring-arch.md`
 - **상세 설계 / 리뷰**(특정 서비스·모듈·API·DB·구현 로직) → 같은 디자이너 게이트 + 출력 계약 `design-authoring-detail.md`
+- **멀티에이전트 협업 / Agent Teams [Claude Code 전용]**(에이전트 간 토론, 경쟁 가설, 다도메인 공동 설계가 필요한 단계) → `~/workspace/agent-ops/claude/agent-teams.md`. 팀 작업이 아닐 때도 항상 적용되는 규칙: 일반 서브에이전트를 디스패치할 때는 절대 `name`을 넘기지 않는다 — agent teams가 켜져 있으면 이름 있는 스폰이 조용히 팀원이 되어버린다.
 - **설계 라우팅**이 일반 리뷰 트리거보다 우선; 고도가 모호하면 대상을 1회 확인. 직접 작업에서는 harnie 루프 전용 섹션을 무시하고, 설계 산출물은 한국어로 쓴다.
 
 ## 명령 실행 [Claude Code 전용]

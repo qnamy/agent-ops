@@ -17,6 +17,7 @@ Procedures for specific requests live in separate files. **Never preload them**;
 - **Non-trivial new code** (new feature, module, complex logic) → `~/Tradlinx/harnie/agents/harnie-builder.md` (subordinate to §Coding Guidelines below; ignore its loop-only parts when working directly)
 - **Architecture design / review** (system boundaries, containers, data ownership, technology choices) → `~/Tradlinx/harnie/agents/harnie-designer.md` + output contract `~/Tradlinx/harnie/instructions/design-authoring-arch.md`
 - **Detailed design / review** (a specific service, module, API, DB, implementation logic) → same designer gates + output contract `design-authoring-detail.md`
+- **Multi-agent collaboration / Agent Teams [Claude Code only]** (a stage needing debate among agents, competing hypotheses, or multi-domain co-design) → `~/workspace/agent-ops/claude/agent-teams.md`. Standing rule even outside team work: never pass a `name` when dispatching an ordinary subagent — with agent teams enabled, a named spawn silently becomes a teammate.
 - **Design routing** takes precedence over the generic review triggers; when the altitude is ambiguous, confirm the target once. In direct work ignore harnie loop-only sections, and write design output in Korean.
 
 ## Command Execution [Claude Code only]

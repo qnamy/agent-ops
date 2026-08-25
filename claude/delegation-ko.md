@@ -7,4 +7,5 @@
 - **GPT 우선, 실패 시 Claude 폴백**: 기본 위임처는 GPT(codex MCP) — Claude usage를 소모하지 않는다. 쓰기가 필요하면 `sandbox=workspace-write`를 준다. Claude 서브에이전트는 (a) codex가 실패·거부하거나 구조적 제약에 걸릴 때(worktree git 메타데이터 쓰기, 이 세션의 MCP 툴(Slack·ADO 등)이 필요한 작업), (b) 크로스-모델 리뷰의 Claude 차례(GPT 산출물 검토)일 때 쓴다.
 - **Claude 서브에이전트**: 기계적·대량 작업(번역 미러·반복 편집·단순 탐색)=Haiku(`claude-haiku-4-5`), 일반 구현·중간 추론=Sonnet(`claude-sonnet-5`), 고난도 판단·리뷰=Opus(`claude-opus-5`).
 - **GPT (codex MCP)**: 고난도 추론=Sol(`gpt-5.6-sol`), 중간 추론·일반 구현=Terra(`gpt-5.6-terra`), 경량=Luna(`gpt-5.6-luna`), 기계적·대량=Spark(`gpt-5.3-codex-spark`).
+- **Agent Teams**: 서브에이전트에서 에이전트 팀으로 전환하는 기준은 `~/workspace/agent-ops/claude/agent-teams.md`가 관장한다; 위 Claude 티어는 팀원에게도 적용된다 — 스폰 시 각 팀원의 모델을 항상 명시한다.
 - **예외**: 단일 소규모 편집·단순 조회처럼 위임 오버헤드(프롬프트 작성+결과 수신)가 작업 자체보다 큰 것은 직접 한다.
