@@ -11,6 +11,7 @@
 
 Procedures for specific requests live in separate files. **Never preload them**; on a trigger, read only the single file the task needs.
 
+- **Development requests in Codex [Codex only]** (any code change — feature, bug fix, refactor, migration) → always run the harnie `dev-solo` skill; never build ad hoc.
 - **Commit / push / PR creation / review-request** → `~/workspace/agent-ops/guidelines/GIT.md` (routes company context to `~/Tradlinx/GIT-PR.md` · `REVIEW-REQUEST.md`)
 - **PR review · code review · comment resolution** → criteria: harnie `pr-review` skill; resolution-verification: harnie `comment-resolve`; company (ADO) procedure: `~/Tradlinx/PR-ADO.md`. **Local review** (no PR number) needs no procedure doc: apply the pr-review criteria directly — default scope current branch vs `main` (working tree if only uncommitted changes; a named commit if given), findings ordered by severity, fixes only after user confirmation.
 - **Non-trivial new code** (new feature, module, complex logic) → `~/Tradlinx/harnie/agents/harnie-builder.md` (subordinate to §Coding Guidelines below; ignore its loop-only parts when working directly)

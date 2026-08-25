@@ -11,6 +11,7 @@
 
 특정 요청 전용 절차는 별도 파일에 둔다. **미리 읽지 말고**, 트리거가 맞을 때 그 작업에 필요한 파일 하나만 읽는다.
 
+- **Codex에서의 개발 요청 [Codex 전용]** (기능·버그 수정·리팩터링·이관 등 모든 코드 변경) → 항상 harnie `dev-solo` 스킬로 수행한다; 즉흥 구현 금지.
 - **커밋 / 푸시 / PR 생성 / 리뷰 요청** → `~/workspace/agent-ops/guidelines/GIT.md` (회사 컨텍스트는 `~/Tradlinx/GIT-PR.md` · `REVIEW-REQUEST.md`로 라우팅)
 - **PR 리뷰 · 코드 리뷰 · 댓글 해결** → 기준: harnie `pr-review` 스킬; 해결 검증 방법론: harnie `comment-resolve`; 회사(ADO) 절차: `~/Tradlinx/PR-ADO.md`. **로컬 리뷰**(PR 번호 없음)는 절차 문서 불요: pr-review 기준을 직접 적용 — 기본 범위는 현재 브랜치 vs `main`(미커밋 변경만 원하면 워킹트리, 커밋이 지정되면 그 커밋), 발견은 심각도순, 수정은 사용자 확인 후에만.
 - **비자명한 신규 코드**(새 기능·모듈·복잡 로직) → `~/Tradlinx/harnie/agents/harnie-builder.md` (아래 §코딩 가이드라인에 종속; 직접 작업 시 루프 전용 부분은 무시)
