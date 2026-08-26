@@ -2,10 +2,9 @@
 
 > Read on trigger from the global CLAUDE.md. Agent Teams is an **experimental** Claude Code feature (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), interactive sessions only — headless `-p` silently falls back to ordinary subagents even when the flag is set. Not available in Codex. Facts below follow the official docs as of Claude Code 2.1.245 (2026-08); re-verify on major CLI upgrades.
 
-## Activation (staged)
+## Activation
 
-- **Stage 1 (current)**: enable per project only, in that project's `.claude/settings.json` `env` block — non-harnie projects only. Keep harnie run sessions flag-off until the two blocking E2E checks pass (① plugin hooks fire in teammate sessions, ② unnamed dispatches stay ordinary subagents while the flag is on).
-- **Stage 2**: after both checks pass, promote the flag to `~/.claude/settings.json` and enable harnie's team-collab path.
+Both blocking E2E checks passed on 2026-08-26 (① plugin hooks fire in teammate sessions, ② unnamed dispatches stay ordinary subagents while the flag is on) and the flag is promoted to `~/.claude/settings.json` `env` — teams are available in any interactive session. harnie's team path stays inert until `instructions/team-collab.md` is wired into the dev pipeline (its own release).
 
 ## Routing: direct vs subagent vs team
 
@@ -22,7 +21,7 @@ A subagent that discovers mid-task that collaboration is needed does **not** for
 
 1. **Never pass `name` when dispatching an ordinary subagent.** In a flag-on session a named spawn silently becomes a teammate with a different return contract. This rule stands even when you are not doing team work.
 2. **One artifact owner per team.** Exactly one teammate writes the single output file; all others are read-only contributors. No source-code writes in a team phase.
-3. **Completion is three conditions together**: the artifact exists on disk ∧ the team task list is closed ∧ the owner's result message has been received. An idle notification alone is never completion — it carries no output.
+3. **Completion is two conditions together**: the artifact exists on disk and the lead has read it ∧ the owner's result message has been received. An idle notification alone is never completion — its payload is only `type/from/timestamp/idleReason` with no output, and `idleReason: "available"` means "not busy", not "done".
 4. **Independent reviewers never join a production team.** A "challenger / devil's advocate" inside a team is an explorer role, not a reviewer. Team output that feeds a formal review loop (e.g. harnie's cross-model loops) still goes through it unabridged — team-internal debate is same-provider and replaces nothing.
 5. **Team state is disposable.** Teammates do not survive `/resume`; recovery is restarting the phase from the on-disk artifact, or degrading to a single subagent that continues from the partial artifact.
 6. **Teammates never touch authority state** (e.g. harnie `.harnie/` CLIs, ledgers, approval flows).
@@ -46,6 +45,16 @@ Inside harnie, `instructions/model-matrix.md` is canonical and overrides this ta
 - **T-A multi-domain contract design**: policy-analyst (explorer × policy × T2) + lead-designer, artifact owner (designer × backend × T3–T4) + frontend-designer (designer × frontend × T2) + challenger (explorer × QA/reliability × T3). Output: one design draft → formal review loop. Add a security / migration / performance explorer (T3) only when that risk is present.
 - **T-B competing-hypothesis incident analysis**: hypothesis-1..N (explorer × one hypothesis each × T2, N≤3) + refuter (explorer × rebuttal × T3) + incident-writer, artifact owner (designer × synthesis × T3). Output: one incident report.
 
-## Known limitations (official docs — design around them)
+## Thinking lenses (spawn-prompt templates only)
 
-No nested teams; one team per session; `/resume` does not restore in-process teammates; in-process teammates cannot spawn background subagents; task status can lag (nudge, don't wait forever); a teammate referencing a subagent definition applies its `tools:` and `model:` but **not** `skills:` or `mcpServers:`.
+Reusable explorer lenses, injected via the spawn prompt — never new agent definitions (inside harnie, ride on the read-only `harnie-scout` definition):
+
+- `skeptic-challenger` — attacks the draft's assumptions; hunts failure modes and counterexamples.
+- `simplicity-advocate` — argues the smallest design that meets the requirement; flags overengineering.
+- `ops-risk` — probes operability: failure recovery, monitoring, migration and rollout risk.
+
+At most 1–2 lenses per team, added only when the team is already justified. A lens argues; it never issues a verdict, and lens debate replaces no review round (hard rule 4). Promote a lens to a real agent definition only after ~3 real uses prove it earns one (rule of three).
+
+## Known limitations (official docs + 2026-08 E2E — design around them)
+
+No nested teams; one team per session; `/resume` does not restore in-process teammates; in-process teammates cannot spawn background subagents; teammate messages and idle notifications deliver only at the lead's turn boundaries — a lead mid-turn receives nothing (pull the artifact from disk when a result is needed) and teammates cannot confirm delivery; no shared task-list tool was observed on lead or teammate side (2026-08 E2E); hook configuration changed mid-session does not apply immediately but may be picked up later without a restart (reload trigger unidentified, 2026-08 E2E) — never assume a just-changed hook is live, verify by firing it; a teammate referencing a subagent definition applies its `tools:` and `model:` but **not** `skills:` or `mcpServers:`.
