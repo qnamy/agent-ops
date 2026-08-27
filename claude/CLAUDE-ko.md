@@ -17,7 +17,7 @@
 - **비자명한 신규 코드**(새 기능·모듈·복잡 로직) → `~/Tradlinx/harnie/agents/harnie-builder.md` (아래 §코딩 가이드라인에 종속; 직접 작업 시 루프 전용 부분은 무시)
 - **아키텍처 설계 / 리뷰**(시스템 경계·컨테이너·데이터 소유권·기술 선택) → `~/Tradlinx/harnie/agents/harnie-designer.md` + 출력 계약 `~/Tradlinx/harnie/instructions/design-authoring-arch.md`
 - **상세 설계 / 리뷰**(특정 서비스·모듈·API·DB·구현 로직) → 같은 디자이너 게이트 + 출력 계약 `design-authoring-detail.md`
-- **병렬 디스패치 / worktree 수명주기 / 터미널 오케스트레이션 [Claude Code 전용]** → harnie가 아니라 **orca가 소유한다**: `orca worktree create` · `orca terminal create|read|send` · `orca worktree ps` · `orca worktree rm`. harnie는 품질·증거·강제화를 소유하며 둘은 경쟁하지 않는다. 사용법은 "use orca cli"로 로드하고, 스킬이 없는 환경에서는 `orca agent-context --json`. 모델·effort는 `--agent`가 아니라 실행되는 명령에 실린다(`claude --model <alias> --effort <level>`). **orca가 소유하지 않은 worktree를 정리하지 않고, 자신이 만들지 않은 것도 정리하지 않는다** — 2026-08-26에 정리 작업이 실행 중이던 run의 worktree와 미푸시 브랜치를 지웠다; 정리 대상은 하나씩 명시 열거한다.
+- **병렬 디스패치 / worktree 수명주기 / 터미널 오케스트레이션 [Claude Code 전용]** → harnie가 아니라 **orca가 소유한다**: `orca worktree create` · `orca terminal create|read|send` · `orca worktree ps` · `orca worktree rm`. harnie는 품질·증거·강제화를 소유하며 둘은 경쟁하지 않는다. 사용법은 "use orca cli"로 로드하고, 스킬이 없는 환경에서는 `orca agent-context --json`. **병렬 유닛을 디스패치할 때는 `~/workspace/agent-ops/claude/orca-dispatch.md`를 먼저 읽는다** — 실측된 명령 형태(모델·effort는 `--agent`가 아니라 실행되는 명령에 실린다), linked worktree에서의 머지 순서, 정리 규칙이 거기 있다. **orca가 소유하지 않은 worktree를 정리하지 않고, 자신이 만들지 않은 것도 정리하지 않는다** — 2026-08-26에 정리 작업이 실행 중이던 run의 worktree와 미푸시 브랜치를 지웠다; 정리 대상은 하나씩 명시 열거한다.
 - **멀티에이전트 협업 / Agent Teams [Claude Code 전용]**(에이전트 간 토론, 경쟁 가설, 다도메인 공동 설계가 필요한 단계) → `~/workspace/agent-ops/claude/agent-teams.md`. 팀 작업이 아닐 때도 항상 적용되는 규칙: 일반 서브에이전트를 디스패치할 때는 절대 `name`을 넘기지 않는다 — agent teams가 켜져 있으면 이름 있는 스폰이 조용히 팀원이 되어버린다.
 - **설계 라우팅**이 일반 리뷰 트리거보다 우선; 고도가 모호하면 대상을 1회 확인. 직접 작업에서는 harnie 루프 전용 섹션을 무시하고, 설계 산출물은 한국어로 쓴다.
 
@@ -44,7 +44,7 @@
 **MUST**
 
 - **좁힌 뒤 읽기**: 위치는 단일 `rg` 명령(레포 루트 기준 상대경로 — 메인 세션에서는 grep-guard 훅이 강제하고, Bash 없는 서브에이전트는 Grep을 유지)으로 찾고, 필요한 구간만 Read한다(`rg -n -C <n>`이면 한 번에). 전체 Read는 파일이 작거나 전체 구조 파악이 꼭 필요할 때만.
-- **위임 우선 [Claude Code 전용]**: 개발은 **기본이 plain 세션**이다(2026-08-26 실측: M `/harnie:dev` run이 시간·토큰 어느 쪽도 이기지 못했다). `/harnie:dev`는 그 강제 장치 — 승인 게이트·seal·영수증·크로스모델 리뷰 루프 — 가 그 작업에 필요할 때 부른다. 직접 작업에서 실질 작업(탐색·구현·기계적 편집·초안·리뷰)을 위임할 때는 `~/workspace/agent-ops/claude/delegation.md`를 읽고 그 티어(GPT 우선·Claude 폴백)대로 배분한다.
+- **위임 우선 [Claude Code 전용]**: 개발은 **기본이 plain 세션**이다(2026-08-26 실측: M `/harnie:dev` run이 시간·토큰 어느 쪽도 이기지 못했다). `/harnie:dev`는 그 강제 장치 — 승인 게이트·seal·영수증·크로스모델 리뷰 루프 — 가 그 작업에 필요할 때 부른다. **run을 돌렸다면 `~/Tradlinx/harnie/docs/m-pipeline-kill-criteria.md`에 한 줄 남긴다**(토큰·벽시계·사용자 개입 횟수·재작업 라운드) — 그 문서의 판정 마감은 2026-11-27이고 아직 표본이 0건이다. 직접 작업에서 실질 작업(탐색·구현·기계적 편집·초안·리뷰)을 위임할 때는 `~/workspace/agent-ops/claude/delegation.md`를 읽고 그 티어(GPT 우선·Claude 폴백)대로 배분한다.
 - **출력 간결**: 결론 + 필요한 근거만; 출력이 큰 명령은 소스에서 필터링해 실행한다.
 
 **NEVER**
