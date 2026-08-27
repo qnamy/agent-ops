@@ -1,6 +1,6 @@
 # delegation.md — Delegation First + Model-Tier Matching (Claude Code only)
 
-> Detail rules split out of the global §Token Economy. **Never read or apply this document while harnie (`/harnie:dev*`) is running** — model assignment is harnie's job. These rules apply only when delegating substantial work during direct (non-harnie) tasks: instruction or harnie maintenance, search and research, and the like.
+> Detail rules split out of the global §Token Economy. **Never read or apply this document while a harnie run (`/harnie:dev`, `dev-solo`) is in progress** — model assignment is harnie's job. These rules apply only when delegating substantial work during direct (non-harnie) tasks: instruction or harnie maintenance, search and research, and the like.
 
 Delegate substantial work (exploration, implementation, mechanical edits, drafts, reviews) to subagents/GPT-MCP whenever possible, and keep the expensive main session focused on orchestration and final judgment. Even work that requires some reasoning should be split into the tiers below rather than absorbed by the main session.
 
