@@ -43,7 +43,7 @@ harnie 내부에서는 `instructions/model-matrix.md`가 정본이며 이 표를
 ## 템플릿 (그대로 쓰지 말고 조정해서 사용; 고정 조직도를 늘리지 말 것)
 
 - **T-A 다도메인 계약 설계**: policy-analyst(탐색자 × 정책 × T2) + lead-designer, 산출물 소유자(설계자 × 백엔드 × T3–T4) + frontend-designer(설계자 × 프런트엔드 × T2) + challenger(탐색자 × QA/신뢰성 × T3). 산출물: 설계 초안 1건 → 정식 리뷰 루프. 해당 리스크가 있을 때만 보안/마이그레이션/성능 탐색자(T3)를 추가한다.
-- **T-B 경쟁 가설 인시던트 분석**: hypothesis-1..N(탐색자 × 가설 1개씩 × T2, N≤3) + refuter(탐색자 × 반박 × T3) + incident-writer, 산출물 소유자(설계자 × 종합 × T3). 산출물: 인시던트 리포트 1건.
+- **T-B 경쟁 가설 인시던트 분석**: hypothesis-1..N(탐색자 × 가설 1개씩 × T2, **N≤2** — ≤4 상한이 구속: N + refuter + owner ≤ 4) + refuter(탐색자 × 반박 × T3) + incident-writer, 산출물 소유자(설계자 × 종합 × T3). 세 번째 가설은 다섯 번째 팀원이 아니라 owner의 종합 단계에서 부차적으로 다룬다. 산출물: 인시던트 리포트 1건.
 
 ## 사고 렌즈 (스폰 프롬프트 템플릿 전용)
 
