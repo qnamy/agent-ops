@@ -22,10 +22,7 @@ Procedures for specific requests live in separate files. **Never preload them**;
 
 ## Command Execution [Claude Code only]
 
-Hooks enforce the shell rules and their deny messages carry the fix (`hook-bash-guard.py`: compound commands, `;`/`&&`/`||`, command substitution and backticks outside quotes are blocked; `hook-grep-guard.py`: main-session Grep is denied in favor of `rg`). Work with them, not around them:
-
-- One single command per Bash call. Genuine compound or multi-line work goes into a `.sh`/`.py` file first (inline `python3 -c` with a newline+`#` comment never auto-approves).
-- Prefer the Read tool over shell for inspecting files; a command's exit code already appears in the tool result — never append `; echo $?`.
+Hooks enforce the shell rules (`hook-bash-guard.py` blocks compound commands; `hook-grep-guard.py` denies main-session Grep in favor of `rg`), and their deny messages already carry the fix — read the message and comply, don't fight the hook. One preference the hooks don't state: prefer the Read tool over shell for inspecting files.
 
 ## Token Economy
 
@@ -40,6 +37,6 @@ Minimize token use without hurting quality — **on conflict, quality wins.**
 Bias toward caution over speed; for trivial tasks, use judgment. Non-trivial new code also applies `harnie-builder.md` (subordinate — on conflict these rules win).
 
 1. **Think before coding.** State assumptions explicitly; present multiple interpretations instead of picking silently; say so when a simpler approach exists — push back when warranted; if something is unclear, stop and ask.
-2. **Simplicity first — overengineering is a defect.** Minimum code that solves the problem: no features beyond what was asked, no abstractions for single-use code, no speculative flexibility or configurability, no error handling for impossible scenarios. No premature optimization; DRY/SOLID only after the rule of three; defensive coding only at trust boundaries (external input, API/DB/network, untrusted data). If 200 lines could be 50, rewrite. Test: would a senior engineer call this overcomplicated?
+2. **Simplicity first.** Overengineering is a defect — canonical rule (no speculative features/abstractions/flexibility, defensive coding only at trust boundaries like external input/API/DB/network): `~/Tradlinx/harnie/instructions/builder-contract.md`. Also: no error handling for impossible scenarios; no premature optimization; DRY/SOLID only after the rule of three; if 200 lines could be 50, rewrite — would a senior engineer call this overcomplicated?
 3. **Surgical changes.** Touch only what the request requires: don't "improve" adjacent code, comments, or formatting; don't refactor what isn't broken; match existing style. Mention unrelated dead code — don't delete it. Remove only the orphans your own change created. Every changed line traces directly to the user's request.
 4. **Goal-driven execution.** Turn tasks into verifiable goals ("fix the bug" = write the reproducing test first, then make it pass); for multi-step work, state a brief step→verify plan. Strong success criteria let you loop independently.
