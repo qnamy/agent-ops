@@ -10,9 +10,9 @@ Scope:
 - Subagent calls pass through untouched (`agent_id`/`agent_type` present):
   read-only agents (harnie-scout/-reviewer/-designer, Explore, Plan) have no
   Bash, so Grep is their only search tool.
-- Grep with a path referencing `.harnie` passes through: harnie's dev-full
-  Bash guard blanket-blocks `.harnie` in shell commands (reads included), so
-  the Grep/Read tools stay the sanctioned readers there.
+- Grep with a path referencing `.harnie` passes through: harnie's run Bash
+  guard blanket-blocks `.harnie` in shell commands (reads included), so the
+  Grep/Read tools stay the sanctioned readers there.
 - Fail-open on any parse error: this guard must never brick a session.
 """
 import json
@@ -31,7 +31,7 @@ def main():
         sys.exit(0)  # subagent (possibly Bash-less): Grep stays available
     tool_input = data.get("tool_input") or {}
     if ".harnie" in str(tool_input.get("path") or ""):
-        sys.exit(0)  # dev-full Bash guard blocks `.harnie` in shell; keep Grep
+        sys.exit(0)  # harnie run Bash guard blocks `.harnie` in shell; keep Grep
 
     print(json.dumps({
         "hookSpecificOutput": {
