@@ -22,21 +22,53 @@ Procedures for specific requests live in separate files. **Never preload them**;
 
 ## Command Execution [Claude Code only]
 
-Hooks enforce the shell rules (`hook-bash-guard.py` blocks compound commands; `hook-grep-guard.py` denies main-session Grep in favor of `rg`), and their deny messages already carry the fix — read the message and comply, don't fight the hook. One preference the hooks don't state: prefer the Read tool over shell for inspecting files.
+**Goal**: run shell commands in the shape the hooks already enforce, and inspect files the cheapest way.
+
+**MUST**
+
+- Read a hook's deny message and comply with the fix it carries (`hook-bash-guard.py` blocks compound commands; `hook-grep-guard.py` denies main-session Grep in favor of `rg`).
+- Prefer the Read tool over shell for inspecting files.
+
+**NEVER**
+
+- Never fight a hook — don't retry a denied call in the same shape.
+- Never append `; echo $?` to a command: the exit code is already in the tool result.
+
+**Evidence**: the hook allowed the call, or a denied call came back in a different shape.
 
 ## Token Economy
 
-Minimize token use without hurting quality — **on conflict, quality wins.**
+**Goal**: minimize token use without hurting quality — **on conflict, quality wins.**
 
-- **Narrow, then read**: locate with single `rg` commands (relative paths from the repo root — the grep-guard hook enforces this in main sessions; Bash-less subagents keep Grep), then Read only the needed range (`rg -n -C <n>` for a region in one step). Full reads only when the file is small or whole-structure understanding is genuinely needed. Never re-read a file already read this session, including verification re-reads after Edit/Write.
-- **Delegation first [Claude Code only]**: do development work through harnie (`/harnie:dev*`) whenever possible. For substantial direct work (exploration, implementation, mechanical edits, drafts, review), read `~/workspace/agent-ops/claude/delegation.md` and distribute per its tiers (GPT first, Claude fallback). **Never read or apply delegation.md while harnie is running.**
-- **Concise output**: conclusions plus necessary evidence only; don't re-quote documents you read; run large-output commands filtered at the source.
+**MUST**
+
+- **Narrow, then read**: locate with single `rg` commands (relative paths from the repo root — the grep-guard hook enforces this in main sessions; Bash-less subagents keep Grep), then Read only the needed range (`rg -n -C <n>` for a region in one step). Full reads only when the file is small or whole-structure understanding is genuinely needed.
+- **Delegation first [Claude Code only]**: do development work through harnie (`/harnie:dev*`) whenever possible. For substantial direct work (exploration, implementation, mechanical edits, drafts, review), read `~/workspace/agent-ops/claude/delegation.md` and distribute per its tiers (GPT first, Claude fallback).
+- **Concise output**: conclusions plus necessary evidence only; run large-output commands filtered at the source.
+
+**NEVER**
+
+- Never re-read a file already read this session, including verification re-reads after Edit/Write.
+- **Never read or apply delegation.md while harnie is running.**
+- Never re-quote documents you read.
+
+**Evidence**: each file appears at most once in the session's read history; large-output commands arrive already filtered.
 
 ## Coding Guidelines
 
-Bias toward caution over speed; for trivial tasks, use judgment. Non-trivial new code also applies `harnie-builder.md` (subordinate — on conflict these rules win).
+**Goal**: bias toward caution over speed; for trivial tasks, use judgment. Non-trivial new code also applies `harnie-builder.md` (subordinate — on conflict these rules win).
+
+**MUST**
 
 1. **Think before coding.** State assumptions explicitly; present multiple interpretations instead of picking silently; say so when a simpler approach exists — push back when warranted; if something is unclear, stop and ask.
-2. **Simplicity first.** Overengineering is a defect — canonical rule (no speculative features/abstractions/flexibility, defensive coding only at trust boundaries like external input/API/DB/network): `~/Tradlinx/harnie/instructions/builder-contract.md`. Also: no error handling for impossible scenarios; no premature optimization; DRY/SOLID only after the rule of three; if 200 lines could be 50, rewrite — would a senior engineer call this overcomplicated?
-3. **Surgical changes.** Touch only what the request requires: don't "improve" adjacent code, comments, or formatting; don't refactor what isn't broken; match existing style. Mention unrelated dead code — don't delete it. Remove only the orphans your own change created. Every changed line traces directly to the user's request.
+2. **Simplicity first.** Overengineering is a defect — canonical rule (no speculative features/abstractions/flexibility, defensive coding only at trust boundaries like external input/API/DB/network): `~/Tradlinx/harnie/instructions/builder-contract.md`. DRY/SOLID only after the rule of three; if 200 lines could be 50, rewrite — would a senior engineer call this overcomplicated?
+3. **Surgical changes.** Touch only what the request requires; match existing style. Mention unrelated dead code. Remove only the orphans your own change created.
 4. **Goal-driven execution.** Turn tasks into verifiable goals ("fix the bug" = write the reproducing test first, then make it pass); for multi-step work, state a brief step→verify plan. Strong success criteria let you loop independently.
+
+**NEVER**
+
+- No error handling for impossible scenarios; no premature optimization.
+- Don't "improve" adjacent code, comments, or formatting; don't refactor what isn't broken.
+- Never delete unrelated dead code — mention it instead.
+
+**Evidence**: every changed line traces directly to the user's request; the stated goal's verification actually ran.
