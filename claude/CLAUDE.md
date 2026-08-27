@@ -1,7 +1,7 @@
 # CLAUDE.md / AGENTS.md — Shared Global Instructions
 
 > **Canonical**: `~/workspace/agent-ops/claude/CLAUDE.md` (repo `qnamy/agent-ops`); `~/.claude/CLAUDE.md` (Claude Code) and `~/.codex/AGENTS.md` (Codex) are symlinks to it. Sections marked **[Claude Code only]** do not apply in Codex.
-> **Language policy**: English `*.md` is the executable canon; keep each `-ko.md` mirror content-equivalent **in the same change**. On conflict, the English canon wins.
+> **Language policy**: English `*.md` is the executable canon. `-ko.md` mirrors are updated only on explicit human request — it is normal for them to lag the English canon (exception: deleting an English canonical file deletes its `-ko.md` pair too). On conflict, the English canon wins.
 
 ## Response Language
 

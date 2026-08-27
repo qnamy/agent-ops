@@ -1,7 +1,7 @@
 # CLAUDE.md / AGENTS.md — 공용 전역 지침 (한국어 미러)
 
 > **정본**: `~/workspace/agent-ops/claude/CLAUDE.md` (레포 `qnamy/agent-ops`); `~/.claude/CLAUDE.md`(Claude Code)와 `~/.codex/AGENTS.md`(Codex)는 이 파일의 심링크다. **[Claude Code 전용]** 표시 섹션은 Codex에서는 무시한다.
-> **언어 정책**: 영문 `*.md`가 실행 정본이며, `-ko.md` 미러는 **같은 변경에서** 내용 동등하게 갱신한다. 충돌 시 영문 정본이 우선.
+> **언어 정책**: 영문 `*.md`가 실행 정본이며, `-ko.md` 미러는 **사람이 명시적으로 요청할 때만** 갱신한다 — 영문보다 오래된 상태로 남는 것이 정상이다(예외: 영문 정본 파일을 삭제하면 대응 `-ko.md`도 같이 삭제). 충돌 시 영문 정본이 우선.
 
 ## 응답 언어
 
