@@ -2,6 +2,7 @@
 
 > **Canonical**: `~/workspace/agent-ops/claude/CLAUDE.md` (repo `qnamy/agent-ops`); `~/.claude/CLAUDE.md` (Claude Code) and `~/.codex/AGENTS.md` (Codex) are symlinks to it. Sections marked **[Claude Code only]** do not apply in Codex.
 > **Language policy**: English `*.md` is the executable canon. `-ko.md` mirrors are updated only on explicit human request — it is normal for them to lag the English canon (exception: deleting an English canonical file deletes its `-ko.md` pair too). On conflict, the English canon wins.
+> **Precedence**: on conflict with any document this file routes to, this file wins — in every section, not only §Coding Guidelines.
 
 ## Output Language and Prose Style
 
@@ -74,7 +75,7 @@ Procedures for specific requests live in separate files. **Never preload them**;
 
 ## Coding Guidelines
 
-**Goal**: bias toward caution over speed; for trivial tasks, use judgment. Non-trivial new code also applies `harnie-builder.md` (subordinate — on conflict these rules win).
+**Goal**: bias toward caution over speed; for trivial tasks, use judgment. Non-trivial new code also applies `harnie-builder.md` (subordinate).
 
 **MUST**
 
@@ -82,11 +83,13 @@ Procedures for specific requests live in separate files. **Never preload them**;
 2. **Simplicity first.** Overengineering is a defect — canonical rule (no speculative features/abstractions/flexibility, defensive coding only at trust boundaries like external input/API/DB/network): `~/Tradlinx/harnie/instructions/builder-contract.md`. DRY/SOLID only after the rule of three; if 200 lines could be 50, rewrite — would a senior engineer call this overcomplicated?
 3. **Surgical changes.** Touch only what the request requires; match existing style. Mention unrelated dead code. Remove only the orphans your own change created.
 4. **Goal-driven execution.** Turn tasks into verifiable goals ("fix the bug" = write the reproducing test first, then make it pass); for multi-step work, state a brief step→verify plan. Strong success criteria let you loop independently.
+5. **Comments carry the reason.** Write a comment only where the code cannot carry the reason behind it; a comment restating the code below it is a maintenance target with no information — canonical rule: `~/Tradlinx/harnie/instructions/builder-contract.md` §Comments.
 
 **NEVER**
 
 - No error handling for impossible scenarios; no premature optimization.
 - Don't "improve" adjacent code, comments, or formatting; don't refactor what isn't broken.
 - Never delete unrelated dead code — mention it instead.
+- Never write a comment that records the change rather than the code's reason (dates, "changed X to Y", commented-out old code). Git holds that history.
 
 **Evidence**: every changed line traces directly to the user's request; the stated goal's verification actually ran.
