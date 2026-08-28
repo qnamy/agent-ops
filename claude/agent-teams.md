@@ -44,6 +44,7 @@ Inside harnie, `instructions/model-matrix.md` is canonical and overrides this ta
 
 - **T-A multi-domain contract design**: policy-analyst (explorer × policy × T2) + lead-designer, artifact owner (designer × backend × T3–T4) + frontend-designer (designer × frontend × T2) + challenger (explorer × QA/reliability × T3). Output: one design draft → formal review loop. Add a security / migration / performance explorer (T3) only when that risk is present.
 - **T-B competing-hypothesis incident analysis**: hypothesis-1..N (explorer × one hypothesis each × T2, **N≤2** — the ≤4 cap binds: N + refuter + owner ≤ 4) + refuter (explorer × rebuttal × T3) + incident-writer, artifact owner (designer × synthesis × T3). A third hypothesis is covered secondarily in the owner's synthesis, not by a fifth teammate. Output: one incident report.
+- **T-C development dispatch plan**: parallel explorers establish the independent facts, then one designer integrates them into a unit-card plan for `orca-dispatch.md`. Each card names file ownership, repository, model, effort, and the prompt-reference path. Example: the harnie 0.14 design session ran three research tracks in parallel, had one designer integrate their results, then produced a parallel execution plan. The cards, rather than the team template, are the dispatch artifact.
 
 ## Thinking lenses (spawn-prompt templates only)
 
