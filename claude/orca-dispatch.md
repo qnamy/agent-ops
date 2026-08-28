@@ -23,7 +23,15 @@ Turn a unit list into running sessions with the intended model and effort, and m
   orca terminal create --worktree name:<unit> --command 'codex exec -m <model> -s workspace-write -c model_reasoning_effort="<level>" "<instruction>"' --json
   ```
 
-  Headless `codex exec` skill loading and Orca completion tracking for this command have not been measured. Use an interactive Codex session for a handoff that needs those guarantees, and inspect the first dispatched terminal before relying on its completion signal.
+  Headless `codex exec` skill loading has not been measured — use an interactive Codex session for a handoff that needs that guarantee.
+
+  **Do not watch a Codex TUI by scraping its terminal.** Measured 2026-08-28: the screen interleaves the session's own output with the transcripts of nested `codex exec` subprocesses, so a filter cannot tell whose `HARNIE_STATUS` line it just matched, and approval prompts vary enough in wording that matching them fails too. Three successive filters gave false readings before the approach was abandoned. Use one of these instead:
+
+  - **What the work produced.** Poll the artifact the job writes — for a harnie run, `execution.mjs runs --root <repo>` and watch `blockers[]` shrink. This is authoritative, immune to screen noise, and shows stage progress for free.
+  - **Turn completion.** `notify = ["<program>", ...]` in `~/.codex/config.toml` fires an external program on `agent-turn-complete` with a JSON payload (`thread-id`, `turn-id`, `cwd`, `last-assistant-message`). It is the only event `notify` supports — it says nothing about starts or approval waits.
+  - **Full state, including approvals.** `codex app-server --listen ws://127.0.0.1:<port>` plus `codex --remote ws://127.0.0.1:<port>` exposes `turn/started`, `turn/completed`, `thread/status/changed`, and unresolved `item/*/requestApproval` requests over JSON-RPC. The client must be attached from session start; attaching to an already-running TUI is not supported.
+
+  **Approval prompts**: launch with `-a never` (`--ask-for-approval never`, or `approval_policy = "never"` in config) when a session must run unattended. The sandbox still applies, so out-of-sandbox commands fail instead of prompting. Choosing "always allow" interactively does not reliably stop the prompts — some prompts offer no such option (2026-08-28, condition not identified).
 
 - **Pass the prompt by reference, not by value.** Write the unit instructions to a file and tell the session to read its section ("read <file>, do the §U3 card"). Long prompts through `--prompt`/`--text` break on shell quoting, and a referenced prompt picks up edits on redispatch.
 - **Push with `git push origin HEAD:main`.** A linked worktree cannot `git switch main` — the main checkout holds that branch.
