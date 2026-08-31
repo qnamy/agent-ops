@@ -86,6 +86,7 @@ Procedures for specific requests live in separate files. **Never preload them**;
 3. **Surgical changes.** Touch only what the request requires; match existing style. Mention unrelated dead code. Remove only the orphans your own change created.
 4. **Goal-driven execution.** Turn tasks into verifiable goals ("fix the bug" = write the reproducing test first, then make it pass); for multi-step work, state a brief step→verify plan. Strong success criteria let you loop independently.
 5. **Comments carry the reason.** Write a comment only where the code cannot carry the reason behind it; a comment restating the code below it is a maintenance target with no information — canonical rule: `~/Tradlinx/harnie/instructions/builder-contract.md` §Comments.
+6. **Review findings are accepted selectively.** Verify each finding against the original source, then accept it only when fixing it is necessary — it prevents a concrete failure, names a real defect, or is low-cost with clear value — not because of its severity label. Reject one that only adds a mechanism with no named mistake scenario, expands scope, or is taste-only polish, and pass that rejection with its reason back to the reviewer so it leaves re-review scope. Wholesale acceptance and wholesale non-fixing both fail this test. Applies to design reviews as much as code, in a harnie loop or ad-hoc; the ledger, the contest grounds for a rejected blocking finding, and the non-blocking default live in `~/Tradlinx/harnie/instructions/loop.md` § "Finding acceptance".
 
 **NEVER**
 
@@ -94,4 +95,4 @@ Procedures for specific requests live in separate files. **Never preload them**;
 - Never delete unrelated dead code — mention it instead.
 - Never write a comment that records the change rather than the code's reason (dates, "changed X to Y", commented-out old code). Git holds that history.
 
-**Evidence**: every changed line traces directly to the user's request; the stated goal's verification actually ran.
+**Evidence**: every changed line traces directly to the user's request; the stated goal's verification actually ran; each rejected review finding left a stated reason with the reviewer.
