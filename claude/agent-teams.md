@@ -22,10 +22,11 @@ A subagent that discovers mid-task that collaboration is needed does **not** for
 1. **Never pass `name` when dispatching an ordinary subagent.** In a flag-on session a named spawn silently becomes a teammate with a different return contract. This rule stands even when you are not doing team work.
 2. **One artifact owner per team.** Exactly one teammate writes the single output file; all others are read-only contributors. No source-code writes in a team phase.
 3. **Completion is two conditions together**: the artifact exists on disk and the lead has read it ∧ the owner's result message has been received. An idle notification alone is never completion — its payload is only `type/from/timestamp/idleReason` with no output, and `idleReason: "available"` means "not busy", not "done".
-4. **Independent reviewers never join a production team.** A "challenger / devil's advocate" inside a team is an explorer role, not a reviewer. Team output that feeds a formal review loop (e.g. harnie's cross-model loops) still goes through it unabridged — team-internal debate is same-provider and replaces nothing.
+4. **Independent reviewers never join a production team.** A "challenger / devil's advocate" inside a team is an explorer role, not a reviewer. Team output that feeds a formal review loop (e.g. harnie's cross-model loops) still goes through it unabridged — team-internal debate is same-provider and replaces nothing. This includes after-the-fact edits: when a team modifies a document that already passed cross-model review — adjudicating that review's findings counts — the modified delta goes back through the same review path (`harnie:cross-review`). The team's closing declaration is never review closure.
 5. **Team state is disposable.** Teammates do not survive `/resume`; recovery is restarting the phase from the on-disk artifact, or degrading to a single subagent that continues from the partial artifact.
 6. **Teammates never touch authority state** (e.g. harnie `.harnie/` CLIs, ledgers, approval flows).
 7. **Caps and spawn hygiene**: ≤4 teammates per team, one artifact per team phase. Always specify each teammate's model explicitly at spawn — an unspecified teammate inherits the lead's model, which is usually wrong. Reasoning effort cannot be set per teammate (inherits the lead); distribute capability via model choice only.
+8. **The lead's closing report decodes team-internal state.** Name each finding by its content — never by ledger IDs or codenames the user never saw (F6, §5-4, "(가)"). State the count of real disagreements; zero disagreements is an observation that the §Routing test mispredicted and a single subagent would have sufficed — say so in the report.
 
 ## Team member = three axes
 
@@ -54,7 +55,9 @@ Reusable explorer lenses, injected via the spawn prompt — never new agent defi
 - `simplicity-advocate` — argues the smallest design that meets the requirement; flags overengineering.
 - `ops-risk` — probes operability: failure recovery, monitoring, migration and rollout risk.
 
-At most 1–2 lenses per team, added only when the team is already justified. A lens argues; it never issues a verdict, and lens debate replaces no review round (hard rule 4). Promote a lens to a real agent definition only after ~3 real uses prove it earns one (rule of three).
+At most 1–2 lenses per team, added only when the team is already justified — and only lenses whose charter matches the judgment axis the request names. A single-axis mandate (e.g. an overengineering hunt) gets only the lens that argues that axis; an opposite-axis lens joins only when the user widens the scope (observed 2026-09: an `ops-risk` lens on an overengineering pass produced 13 of 23 findings outside the mandate).
+
+A lens argues; it never issues a verdict, and lens debate replaces no review round (hard rule 4). Restate that contract in the lens's spawn prompt: **argue only — no verdicts, no corrected drafts, no document edits; output is findings, each with a concrete scenario.** A lens contract that lives only in this file evaporates at spawn time. Promote a lens to a real agent definition only after ~3 real uses prove it earns one (rule of three).
 
 ## Known limitations (official docs + 2026-08 E2E — design around them)
 
