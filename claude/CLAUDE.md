@@ -69,11 +69,11 @@ Procedures for specific requests live in separate files. **Never preload them**;
 
 **NEVER**
 
-- Never re-read a file already read this session, including verification re-reads after Edit/Write.
+- Never re-read a file already read this session, including verification re-reads after Edit/Write. One exception, and both halves of it have to hold: a compaction has intervened since that read, and the file is one this work depends on directly — the document it executes from, or evidence its conclusions cite. That content is gone rather than held, and working from a memory of it is the quality loss this section's Goal rules against. Read back what the work still needs, on the same terms as "Narrow, then read" above.
 - **Never read or apply delegation.md while a harnie run is in progress** — model assignment is harnie's.
 - Never re-quote documents you read.
 
-**Evidence**: each file appears at most once in the session's read history; large-output commands arrive already filtered.
+**Evidence**: each file appears at most once in the session's read history; a second appearance sits after a compaction and covers only the range the current work needs; large-output commands arrive already filtered.
 
 ## Coding Guidelines
 
