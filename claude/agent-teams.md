@@ -4,7 +4,7 @@
 
 ## Activation
 
-Both blocking E2E checks passed on 2026-08-26 (① plugin hooks fire in teammate sessions, ② unnamed dispatches stay ordinary subagents while the flag is on) and the flag is promoted to `~/.claude/settings.json` `env` — teams are available in any interactive session. harnie's team path stays inert until `instructions/team-collab.md` is wired into the dev pipeline (its own release).
+Both blocking E2E checks passed on 2026-08-26 (① plugin hooks fire in teammate sessions, ② unnamed dispatches stay ordinary subagents while the flag is on) and the flag is promoted to `~/.claude/settings.json` `env` — teams are available in any interactive session. harnie has no team path of its own; its chain stages run in plain sessions and its reviews in a separate orca session.
 
 ## Routing: direct vs subagent vs team
 
@@ -22,9 +22,9 @@ A subagent that discovers mid-task that collaboration is needed does **not** for
 1. **Never pass `name` when dispatching an ordinary subagent.** In a flag-on session a named spawn silently becomes a teammate with a different return contract. This rule stands even when you are not doing team work.
 2. **One artifact owner per team.** Exactly one teammate writes the single output file; all others are read-only contributors. No source-code writes in a team phase.
 3. **Completion is two conditions together**: the artifact exists on disk and the lead has read it ∧ the owner's result message has been received. An idle notification alone is never completion — its payload is only `type/from/timestamp/idleReason` with no output, and `idleReason: "available"` means "not busy", not "done".
-4. **Independent reviewers never join a production team.** A "challenger / devil's advocate" inside a team is an explorer role, not a reviewer. Team output that feeds a formal review loop (e.g. harnie's cross-model loops) still goes through it unabridged — team-internal debate is same-provider and replaces nothing. This includes after-the-fact edits: when a team modifies a document that already passed cross-model review — adjudicating that review's findings counts — the modified delta goes back through the same review path (`harnie:cross-review`). The team's closing declaration is never review closure.
+4. **Independent reviewers never join a production team.** A "challenger / devil's advocate" inside a team is an explorer role, not a reviewer. Team output that feeds a formal review loop (e.g. harnie's cross-model loops) still goes through it unabridged — team-internal debate is same-provider and replaces nothing. This includes after-the-fact edits: when a team modifies a document that already passed cross-model review — adjudicating that review's findings counts — the modified delta goes back through the same review path (`software-design-review` for a design, `implementation-review` for code). The team's closing declaration is never review closure.
 5. **Team state is disposable.** Teammates do not survive `/resume`; recovery is restarting the phase from the on-disk artifact, or degrading to a single subagent that continues from the partial artifact.
-6. **Teammates never touch authority state** (e.g. harnie `.harnie/` CLIs, ledgers, approval flows).
+6. **Teammates never settle a `[미결정]` on behalf of its decider, and never edit the `_chain/` review or response files.** A designer teammate does record and carry over open items verbatim — that is the design contract — but deciding one is the named decider's act, not the team's.
 7. **Caps and spawn hygiene**: ≤4 teammates per team, one artifact per team phase. Always specify each teammate's model explicitly at spawn — an unspecified teammate inherits the lead's model, which is usually wrong. Reasoning effort cannot be set per teammate (inherits the lead); distribute capability via model choice only.
 8. **The lead's closing report decodes team-internal state.** Name each finding by its content — never by ledger IDs or codenames the user never saw (F6, §5-4, "(가)"). State the count of real disagreements; zero disagreements is an observation that the §Routing test mispredicted and a single subagent would have sufficed — say so in the report.
 
@@ -39,7 +39,7 @@ process role (explorer / designer / builder / reviewer — reviewer prohibited i
 | T2 | sonnet | terra | standard design, implementation, review |
 | T1 | haiku | luna | exploration, classification, narrow verification |
 
-Inside harnie, `instructions/model-matrix.md` is canonical and overrides this table; outside harnie, `delegation.md` tiers apply.
+`delegation.md` tiers apply here as everywhere else.
 
 ## Templates (adapt these; don't multiply fixed org charts)
 
@@ -49,7 +49,7 @@ Inside harnie, `instructions/model-matrix.md` is canonical and overrides this ta
 
 ## Thinking lenses (spawn-prompt templates only)
 
-Reusable explorer lenses, injected via the spawn prompt — never new agent definitions (inside harnie, ride on the read-only `harnie-scout` definition):
+Reusable explorer lenses, injected via the spawn prompt — never new agent definitions (ride on the built-in read-only `Explore` agent):
 
 - `skeptic-challenger` — attacks the draft's assumptions; hunts failure modes and counterexamples.
 - `simplicity-advocate` — argues the smallest design that meets the requirement; flags overengineering.
