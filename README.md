@@ -12,7 +12,7 @@ Claude Code와 Codex를 **하나의 지침 체계로 묶어 운영**하는 개�
 claude/
 ├── CLAUDE.md        # 전역 지침 정본(영문) — Claude(~/.claude/CLAUDE.md)와 Codex(~/.codex/AGENTS.md)가 심링크로 공유
 ├── delegation.md    # 위임·모델 티어 매칭 규칙 (on-demand 로드)
-└── codex-hooks.json # Codex 쪽 훅 등록 조각 (bash-guard + routine-sync)
+└── codex-hooks.json # Codex 쪽 훅 등록 조각 (routine-sync)
 guidelines/
 └── GIT.md           # 커밋·푸시·PR 라우팅 (회사/개인 컨텍스트 자동 판별)
 routines/
@@ -21,10 +21,10 @@ routines/
 scripts/
 ├── sanitize.py      # 라이브 루틴 문서 → 템플릿 결정적 치환 + 유출 검사 내장 (실패 시 exit 1)
 ├── sync-templates.sh# 치환 → 유출검사 → 변경 시 로컬 자동 커밋 (푸시는 사람이 확인 후)
-├── hook-routine-sync.py # Claude Code PostToolUse 훅 — 라이브 루틴 수정 감지 시 위 동기화 자동 실행
-├── hook-bash-guard.py   # PreToolUse 훅 — 자동승인 불가한 복합 명령(;, &&, ||, 명령치환, 백틱) 차단
-└── hook-grep-guard.py   # PreToolUse 훅 — 메인 세션 Grep을 rg로 유도 (토큰 경제)
+└── hook-routine-sync.py # Claude Code PostToolUse 훅 — 라이브 루틴 수정 감지 시 위 동기화 자동 실행
 ```
+
+PreToolUse deny 훅(복합 명령 차단·Grep→rg 유도)은 2026-09-08에 제거했다. Claude Code가 복합 명령을 부분 명령 단위로 판정하게 되어 allow에 맞는 명령까지 막는 과차단이 됐고, Grep은 경로를 생략하면 rg와 출력이 같아 훅 없이 지침 한 줄로 충분해졌다. 근거는 harnie `docs/design-artifact-references.md` §16.
 
 각 지침 문서에는 한국어 미러(`*-ko.md`)가 있다(갱신은 요청 시 — 설계 원칙 3) — 트리에서는 생략했다.
 
@@ -57,7 +57,7 @@ ln -sf ~/workspace/agent-ops/claude/CLAUDE.md ~/.codex/AGENTS.md
 
 훅까지 켜려면 추가로:
 
-- **Claude Code** — `~/.claude/settings.json`에 훅을 등록한다: `scripts/hook-bash-guard.py`(PreToolUse `Bash`), `scripts/hook-grep-guard.py`(PreToolUse `Grep`), `scripts/hook-routine-sync.py`(PostToolUse `Edit|Write`).
+- **Claude Code** — `~/.claude/settings.json`에 훅을 등록한다: `scripts/hook-routine-sync.py`(PostToolUse `Edit|Write`).
 - **Codex** — [claude/codex-hooks.json](claude/codex-hooks.json) 조각을 Codex 훅 설정에 반영한다. 훅 명령이 바뀌면(동기화 포함) trusted hash 불일치로 무음 스킵되므로, 대화형 Codex에서 재승인한 뒤 `codex exec`로 실차단을 검증한다.
 
 ## License
