@@ -1,11 +1,12 @@
-# delegation.md — 위임 우선 + 모델 티어 매칭 (Claude Code 전용)
+# delegation.md — 위임 우선 + 모델 등급 매칭 (Claude Code only)
 
-> 전역 지침 §토큰 절약에서 분리한 상세 규칙. **harnie run(`/harnie:dev`, `dev-solo`)이 진행 중에는 이 문서를 읽지도, 적용하지도 않는다** — 모델 배정은 harnie가 관리한다. 이 규칙은 harnie 밖 직접 작업(지침·harnie 자체 수정, 검색·조사 등)에서 실질 작업을 위임할 때만 적용한다.
+> 전역 §Token Economy에서 분리한 세부 규칙이다. 이 규칙은 실질적인 작업, 즉 지침이나 harnie 유지보수, 검색과 조사, harnie 체인 단계의 탐색이나 기계적 부분을 위임할 때 적용한다. 체인의 리뷰어 세션과 검증자 세션은 위임 대상이 아니다. 이들은 orca를 통해 다른 프로바이더의 대화형 세션으로 연다(전역 라우팅 표 참조).
 
-실질 작업(탐색·구현·기계적 편집·초안·리뷰)은 가능한 한 서브에이전트/GPT-MCP로 위임하고, 고비용 메인 세션은 오케스트레이션·최종 판단에 집중한다. 어느 정도 추론이 필요한 작업도 메인이 떠안지 말고 아래 티어로 나눠 보낸다.
+실질적인 작업(탐색, 구현, 기계적 편집, 초안 작성, 리뷰)은 가능한 한 서브에이전트/GPT-MCP에 위임하고, 비용이 큰 메인 세션은 오케스트레이션과 최종 판단에만 집중시킨다. 어느 정도 추론이 필요한 작업도 메인 세션이 직접 떠안기보다 아래 등급으로 나눠 처리한다.
 
-- **GPT 우선, 실패 시 Claude 폴백**: 기본 위임처는 GPT(codex MCP) — Claude usage를 소모하지 않는다. 쓰기가 필요하면 `sandbox=workspace-write`를 준다. Claude 서브에이전트는 (a) codex가 실패·거부하거나 구조적 제약에 걸릴 때(worktree git 메타데이터 쓰기, 이 세션의 MCP 툴(Slack·ADO 등)이 필요한 작업), (b) 크로스-모델 리뷰의 Claude 차례(GPT 산출물 검토)일 때 쓴다.
-- **Claude 서브에이전트**: 기계적·대량 작업(번역 미러·반복 편집·단순 탐색)=Haiku(`claude-haiku-4-5`), 일반 구현·중간 추론=Sonnet(`claude-sonnet-5`), 고난도 판단·리뷰=Opus(`claude-opus-5`).
-- **GPT (codex MCP)**: 고난도 추론=Sol(`gpt-5.6-sol`), 중간 추론·일반 구현=Terra(`gpt-5.6-terra`), 경량=Luna(`gpt-5.6-luna`), 기계적·대량=Spark(`gpt-5.3-codex-spark`).
-- **Agent Teams**: 서브에이전트에서 에이전트 팀으로 전환하는 기준은 `~/workspace/agent-ops/claude/agent-teams.md`가 관장한다; 위 Claude 티어는 팀원에게도 적용된다 — 스폰 시 각 팀원의 모델을 항상 명시한다.
-- **예외**: 단일 소규모 편집·단순 조회처럼 위임 오버헤드(프롬프트 작성+결과 수신)가 작업 자체보다 큰 것은 직접 한다.
+- **GPT 우선, Claude 폴백**: 기본 위임 대상은 GPT(codex MCP)다. Claude 사용량을 소모하지 않는다. 쓰기가 필요하면 `sandbox=workspace-write`를 부여한다. Claude 서브에이전트는 (a) codex가 실패하거나 거부하거나 구조적 한계에 부딪힐 때(워크트리에서 git 메타데이터 쓰기, Slack/ADO처럼 이 세션의 MCP 도구가 필요한 작업), 또는 (b) 크로스모델 리뷰에서 Claude 차례일 때(GPT 산출물 리뷰) 사용한다.
+- **Claude 서브에이전트**: 기계적·대량 작업(번역 미러, 반복 편집, 단순 탐색) = Haiku(`claude-haiku-4-5`), 일반 구현/중간 수준 추론 = Sonnet(`claude-sonnet-5`), 어려운 판단/리뷰 = Opus(`claude-opus-5`).
+- **GPT(codex MCP)**: 어려운 추론 = Sol(`gpt-5.6-sol`), 중간 수준 추론/일반 구현 = Terra(`gpt-5.6-terra`), 가벼운 작업 = Luna(`gpt-5.6-luna`), 기계적·대량 작업 = Spark(`gpt-5.3-codex-spark`).
+- **외부 조사**(다른 프로젝트가 문제를 어떻게 푸는지, 베스트 프랙티스, 참고자료 서베이)는 사용자가 요청할 때만 수행하며, read-only에는 없는 네트워크가 웹 검색에 필요하므로 항상 `workspace-write`로 `gpt-5.6-luna`에서 effort `xhigh`로 돌린다. 이는 결정이 라이브러리의 실제 API, 버전 제약, 프로토콜 규칙 같은 외부 사실에 걸릴 때 체인 단계가 자체적으로 수행하는 좁은 범위의 사실 확인과는 다르다. 그 확인은 해당 단계 자신의 스킬이 관장하며 위임이 필요 없다. 수단은 이 순서를 따른다. 서브에이전트(Claude에서는 codex MCP, Codex에서는 네이티브 서브에이전트), 조사가 길거나 여러 건을 동시에 돌릴 때는 orca 크로스세션, 둘 다 쓸 수 없을 때만 `codex exec` CLI. 질문은 파일로 건네고 결과도 파일로 받으며, 미확인 사항은 모두 `[미확인]`으로 표시한다.
+- **Agent Teams**: 서브에이전트에서 에이전트 팀으로 전환하는 것은 `~/workspace/agent-ops/claude/agent-teams.md`가 관장한다. 위의 Claude 등급은 팀원에게도 적용되며, 팀원을 스폰할 때는 항상 각자의 모델을 명시한다.
+- **예외**: 위임 오버헤드(프롬프트 작성 + 결과 수신)가 작업 자체보다 큰 경우는 직접 처리한다. 예를 들어 사소한 단일 편집이나 단순 조회다.
