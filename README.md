@@ -12,6 +12,7 @@ Claude Code와 Codex를 **하나의 지침 체계로 묶어 운영**하는 개�
 claude/
 ├── CLAUDE.md        # 전역 지침 정본(영문) — Claude(~/.claude/CLAUDE.md)와 Codex(~/.codex/AGENTS.md)가 심링크로 공유
 ├── delegation.md    # 위임·모델 티어 매칭 규칙 (on-demand 로드)
+├── permissions.md   # 라우팅된 워크플로가 전제하는 Claude Code allow 규칙과 그 범위 근거
 └── codex-hooks.json # Codex 쪽 훅 등록 조각 (routine-sync)
 guidelines/
 └── GIT.md           # 커밋·푸시·PR 라우팅 (회사/개인 컨텍스트 자동 판별)
