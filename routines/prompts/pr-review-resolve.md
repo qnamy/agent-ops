@@ -25,7 +25,7 @@ ADO는 모두 `bash bin/az pr-review-resolve ...`로 호출한다. **이 세션�
 
 `python3 bin/round.py begin pr-review-resolve`를 **한 번** 실행한다. dry-run 판정·락 획득·게이트 스냅샷·인증 확인·맥락 파일 읽기·worklist 폴드를 스크립트가 한 번에 처리해 JSON 한 줄로 돌려준다. 이것들을 따로 실행하지 않는다 — 각각이 도구 호출 한 턴이었고 할 일 없는 회차조차 그것만으로 8턴을 썼다.
 
-받는 값은 `live`(dry-run 여부)·`token`·`runStartedEpoch`(토큰과 같은 값)·`snapshot`(pending을 snapshot으로 복사했음)·`auth`(`bin/az` 인증 확인 결과)·`context`(맥락 파일 `state/gate/context.pr-review-resolve.json` 내용, 없으면 null)·`worklist`(`pr-review-worklist.jsonl`의 활성 집합, 폴드 완료)다. `token`을 `TOKEN`으로 보관한다.
+받는 값은 `live`(dry-run 여부)·`token`·`runStartedEpoch`(토큰과 같은 값)·`snapshot`(pending을 snapshot으로 복사했음)·`auth`(`bin/az` 인증 확인 결과)·`context`(맥락 파일 `state/gate/context.pr-review-resolve.json` 내용, 없으면 null)·`worklist`(`pr-review-worklist.jsonl`의 활성 집합, 폴드 완료)다. `token`을 `TOKEN`으로 보관한다. worklist 항목에 `inFlight`가 붙어 있으면 그 automation의 회차가 **지금 돌고 있고 그 항목을 등록한 것이 그 회차다** — `begin`이 그 automation의 락 소유 epoch과 항목의 등록 ts를 비교해 붙인다.
 
 `error`가 있으면(`lock-busy`·`no-pending`·`auth-failed`·`fold-failed`) 그 사유로 **대상 특정 전 실패**를 보고하고 종료한다 — 스크립트가 락을 이미 풀었으므로 release를 부르지 않는다.
 
@@ -36,6 +36,8 @@ ADO는 모두 `bash bin/az pr-review-resolve ...`로 호출한다. **이 세션�
 `config`는 `begin` JSON의 `context.config`, 활성 집합은 `begin` JSON의 `worklist`다. 인증은 `begin`이 `auth:ok`로 이미 확인했다 — `account show`도 `fold-worklist.py`도 다시 부르지 않는다. 빈 `worklist`는 성공한 no-op이다.
 
 각 worklist PR을 순차 처리한다.
+
+**`inFlight`가 붙은 PR은 이번 회차에서 손대지 않는다.** 조회·검증·대댓글·resolve·재투표·close·미리뷰 복구를 모두 건너뛰고 `미처리`로 남기며, 사유는 `<automation> 회차 진행 중`이다. `pr-review-intake`는 09-16 고아 PR 사고 뒤 **리뷰 전에** worklist에 등록하고, 이 프롬프트는 「내 `text` 스레드 0건」을 리뷰 실패의 복구 신호로 쓴다. 리뷰가 도는 몇 분은 두 판정이 함께 성립하는 창이고, 락은 automation별이라 intake와 resolve를 직렬화하지 않는다. 2026-09-17 11:01 intake와 11:10 resolve가 그 창에서 `Lingo/tx-lingo-api#{PR}`에 같은 지적을 두 벌 달았고(스레드 91421·91425, 91422·91426, 본문이 사실상 같고 멘션 위치만 다르다) 작성자가 네 스레드에 모두 답글을 썼다. 스레드 집합이 아직 채워지는 중이라 재투표와 close 판정도 이 PR에는 성립하지 않는다 — `nit:`만 올라온 시점에 `approve-with-suggestions`를 찍으면 뒤이어 올라올 `issue:`를 덮는다. 그 회차가 끝나면 `inFlight`가 사라지고 다음 회차가 평소대로 처리한다.
 
 PR의 `status`·`srcCommit`·`tgtCommit`·`createdById`(작성자 멘션용)는 `begin` JSON의 `context.prs`에서 읽는다 — precheck가 게이트 판정에 이미 조회한 손실 없는 값이므로 `repos pr show`를 다시 부르지 않는다(종전엔 작성자 GUID 때문에 18세션에 26회 불렀다). 항목이 없으면 그 PR만 직접 조회한다. **스레드는 맥락에 없다. `pullRequestThreads`로 직접 조회한다.** 게이트 digest의 스레드 요약은 해시용 축약이라 댓글 원문도 루트 작성자도 접두어도 없어 검증 입력이 되지 못한다. 이 조회 또는 필요한 로컬 commit 읽기 실패는 해당 PR만 미처리로 남기고 다음 PR로 간다.
 
@@ -52,7 +54,7 @@ PR의 `status`·`srcCommit`·`tgtCommit`·`createdById`(작성자 멘션용)는 
 1. `bash bin/pr-session.sh ensure "<key>"`로 세션을 얻는다. 실패하면 그 PR을 미처리로 남긴다.
 2. `state/ask.pr-review-resolve.md`에 **intake 「2. 수집·판정·리뷰」의 리뷰 지시**를 쓴다 — 리뷰 기준·범위·금지와 `{"findings":[{"prefix","filePath","line","content"}],"summary"}` 결과 형식이다. 해소 검증 지시(`threads[]`)를 쓰지 않는다.
 3. `bash bin/pr-session.sh ask "<key>" state/ask.pr-review-resolve.md`. `ok <경로>`가 아니면 미처리로 남긴다.
-4. 받은 `findings`로 ADO 스레드 작성·투표·`review-findings.jsonl`·`pr-review-summary.jsonl`을 **intake와 같은 규칙으로** 처리한다.
+4. 받은 `findings`로 ADO 스레드 작성·투표·`review-findings.jsonl`·`pr-review-summary.jsonl`을 **intake와 같은 규칙으로** 처리한다. **`by`는 빌려오지 않는다** — 원장과 worklist의 `by`는 그 줄을 실제로 쓴 automation이므로 이 경로에서도 `pr-review-resolve`다. intake의 줄 형식을 그대로 흉내 내다 `by:"pr-review-intake"`를 복사하면 resolve가 한 리뷰가 intake의 것으로 집계되고, 「진단 순서」와 automation별 회계가 전부 어긋난다(2026-09-17 `Collect/<레포 F>#{PR}`·`<공백 있는 프로젝트>/tx-scraper-vessel-schedule#{PR}`의 ts `1789618273` 등록 세 건이 resolve 토큰인데 `by`는 intake로 적혔다).
 5. `approve` 또는 `approve-with-suggestions`가 성공했으면 intake와 같이 lock check 뒤 worklist를 `reason:"no-findings"`·`"nit-only"`로 close하고 `bash bin/pr-session.sh close "<key>"`를 실행한다. 닫지 않으면 지적 0건 PR이 매 회차 다시 리뷰되고, nit-only는 열린 nit 때문에 아래 close 조건도 통과하지 못해 영구히 남는다.
 
 그 스레드를 최신 댓글 작성자로 분류한다.
