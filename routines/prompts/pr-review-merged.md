@@ -22,7 +22,7 @@ ADO 호출은 전부 `bash bin/az pr-review-merged ...`로 한다. 레포 접근
 
 ## 1. 회차 시작
 
-`bash bin/round.py begin pr-review-merged`를 **한 번** 실행한다. dry-run 판정·락 획득·인증 확인·맥락 파일 읽기·worklist 폴드를 스크립트가 한 번에 처리해 JSON 한 줄로 돌려준다. 이것들을 따로 실행하지 않는다 — 각각이 도구 호출 한 턴이었고 할 일 없는 회차조차 그것만으로 8턴을 썼다.
+`python3 bin/round.py begin pr-review-merged`를 **한 번** 실행한다. dry-run 판정·락 획득·인증 확인·맥락 파일 읽기·worklist 폴드를 스크립트가 한 번에 처리해 JSON 한 줄로 돌려준다. 이것들을 따로 실행하지 않는다 — 각각이 도구 호출 한 턴이었고 할 일 없는 회차조차 그것만으로 8턴을 썼다.
 
 받는 값은 `live`(dry-run 여부)·`token`·`runStartedEpoch`(토큰과 같은 값)·`auth`(`bin/az` 인증 확인 결과)·`context`(맥락 파일 `state/gate/context.pr-review-merged.json` 내용, 없으면 null)·`worklist`(`pr-review-worklist.jsonl`의 활성 집합, 폴드 완료)다. `token`을 `TOKEN`으로 보관한다.
 
@@ -59,6 +59,6 @@ PR 하나의 조회·검증·원장·ADO 댓글·resolve·close 실패는 그 PR
 
 ## 4. 회차 종료와 보고
 
-정상 경로에서는 `bash bin/round.py finish pr-review-merged "$TOKEN"`를 **한 번** 실행한다. 스크립트가 lock check → 락 해제를 한 번에 처리한다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`·`pr-session.sh sweep`을 따로 부르지 않는다.
+정상 경로에서는 `python3 bin/round.py finish pr-review-merged "$TOKEN"`를 **한 번** 실행한다. 스크립트가 lock check → 락 해제를 한 번에 처리한다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`·`pr-session.sh sweep`을 따로 부르지 않는다.
 
 한국어 보고에는 worklist 수, active·abandoned·7일 초과·7일 이내 분류, 검증 통과 resolve, 검증 실패 후 quality-list 이관, close 사유, 미처리 PR과 사유, dry-run 수행 예정 목록을 포함한다.

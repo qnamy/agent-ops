@@ -23,7 +23,7 @@ Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 �
 
 ## 1. 회차 시작
 
-`bash bin/round.py begin code-convention-digest`를 **한 번** 실행한다. dry-run 판정·락 획득·맥락 파일 읽기를 스크립트가 한 번에 처리해 JSON 한 줄로 돌려준다. 이것들을 따로 실행하지 않는다 — 각각이 도구 호출 한 턴이었고 할 일 없는 회차조차 그것만으로 8턴을 썼다.
+`python3 bin/round.py begin code-convention-digest`를 **한 번** 실행한다. dry-run 판정·락 획득·맥락 파일 읽기를 스크립트가 한 번에 처리해 JSON 한 줄로 돌려준다. 이것들을 따로 실행하지 않는다 — 각각이 도구 호출 한 턴이었고 할 일 없는 회차조차 그것만으로 8턴을 썼다.
 
 받는 값은 `live`(dry-run 여부)·`token`·`runStartedEpoch`(토큰과 같은 값)·`context`(맥락 파일 `state/gate/context.code-convention-digest.json` 내용, 없으면 null)다. `token`을 `TOKEN`으로 보관한다.
 
@@ -51,6 +51,6 @@ adopted·expired 판정만 있고 발송 대상이 없더라도 라이브에서�
 
 ## 4. 회차 종료와 보고
 
-정상 경로에서는 `bash bin/round.py finish code-convention-digest "$TOKEN"`를 **한 번** 실행한다. 스크립트가 lock check → 락 해제를 한 번에 처리한다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`·`pr-session.sh sweep`을 따로 부르지 않는다.
+정상 경로에서는 `python3 bin/round.py finish code-convention-digest "$TOKEN"`를 **한 번** 실행한다. 스크립트가 lock check → 락 해제를 한 번에 처리한다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`·`pr-session.sh sweep`을 따로 부르지 않는다.
 
 한국어 보고에는 고유 occurrence 수, 군집 수와 rule-of-three 미달 수, 신규·재노출 후보와 노출 횟수, adopted·expired, DM 발송과 요지, exposure 저장 여부, dry-run 수행 예정과 실패 단계를 포함한다.

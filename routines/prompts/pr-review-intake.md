@@ -37,7 +37,7 @@ Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 �
 
 ## 1. 회차 시작
 
-`bash bin/round.py begin pr-review-intake`를 **한 번** 실행한다. dry-run 판정·락 획득·게이트 스냅샷·인증 확인·맥락 파일 읽기를 스크립트가 한 번에 처리해 JSON 한 줄로 돌려준다. 이것들을 따로 실행하지 않는다 — 각각이 도구 호출 한 턴이었고 할 일 없는 회차조차 그것만으로 8턴을 썼다.
+`python3 bin/round.py begin pr-review-intake`를 **한 번** 실행한다. dry-run 판정·락 획득·게이트 스냅샷·인증 확인·맥락 파일 읽기를 스크립트가 한 번에 처리해 JSON 한 줄로 돌려준다. 이것들을 따로 실행하지 않는다 — 각각이 도구 호출 한 턴이었고 할 일 없는 회차조차 그것만으로 8턴을 썼다.
 
 받는 값은 `live`(dry-run 여부)·`token`·`runStartedEpoch`(토큰과 같은 값)·`snapshot`(pending을 snapshot으로 복사했음)·`auth`(`bin/az` 인증 확인 결과)·`context`(맥락 파일 `state/gate/context.pr-review-intake.json` 내용, 없으면 null)다. `token`을 `TOKEN`으로 보관한다.
 
@@ -109,6 +109,6 @@ raw 수집이 0건이 아니고 모든 대상이 성공했으며 라이브일 �
 
 ## 4. 회차 종료와 보고
 
-정상 경로에서는 `bash bin/round.py finish pr-review-intake "$TOKEN" [--commit]`를 **한 번** 실행한다. 스크립트가 lock check → 게이트 commit → 락 해제를 한 번에 처리한다. `--commit`은 모든 대상과 상태 기록이 성공했고 라이브일 때만 붙인다. dry-run, raw 0건 가드, PR 하나라도 미처리, 또는 상태 기록 실패에서는 commit하지 않는다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`·`pr-session.sh sweep`을 따로 부르지 않는다.
+정상 경로에서는 `python3 bin/round.py finish pr-review-intake "$TOKEN" [--commit]`를 **한 번** 실행한다. 스크립트가 lock check → 게이트 commit → 락 해제를 한 번에 처리한다. `--commit`은 모든 대상과 상태 기록이 성공했고 라이브일 때만 붙인다. dry-run, raw 0건 가드, PR 하나라도 미처리, 또는 상태 기록 실패에서는 commit하지 않는다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`·`pr-session.sh sweep`을 따로 부르지 않는다.
 
 보고는 한국어로 조회 창·96시간 캡·raw 0건 여부, 감지·제외·미처리 PR과 사유, PR별 댓글/투표/Slack 대댓글, worklist·감사 로그·mark·commit 여부, dry-run 수행 예정 목록을 남긴다. 크리덴셜은 보고하지 않는다.
