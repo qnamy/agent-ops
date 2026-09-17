@@ -35,6 +35,9 @@ WS = "orca-automations"
 # `pr-session.sh ask`가 보내는 리뷰 지시의 첫 줄. 프롬프트의 `state/ask.*.md`
 # 서두가 바뀌면 여기도 같이 고쳐야 한다.
 WORKER_OPENER = re.compile(r"저장소 PR \d+")
+# 회차만 락을 잡는다. `round.py begin`이 `lock.sh acquire`를 서브프로세스로
+# 감추므로(c11be27) 둘 다 본다.
+ORCHESTRATOR_MARK = re.compile(r"lock\.sh acquire|round\.py begin")
 
 
 def moment(raw, default):
