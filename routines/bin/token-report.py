@@ -54,45 +54,49 @@ def add(bucket, turns, input_tokens, cache, fresh, output):
     bucket["output"] += output
 
 
+def stamp_of(line):
+    try:
+        return datetime.datetime.fromisoformat(
+            json.loads(line)["timestamp"].replace("Z", "+00:00")
+        ).timestamp()
+    except Exception:
+        return None
+
+
 def scan_codex(since, until, orchestrator, worker):
     for path in glob.glob(CODEX):
         if os.path.getmtime(path) < since:
             continue
         cwd = ""
-        started = None
         is_orchestrator = False
-        total = None
-        turns = 0
+        turns = cache = fresh = output = 0
+        at = None
         for line in open(path):
             if not cwd and '"cwd"' in line:
                 try:
                     cwd = json.loads(line).get("payload", {}).get("cwd", "")
                 except Exception:
                     pass
-            if started is None and '"timestamp"' in line:
-                try:
-                    stamp = json.loads(line)["timestamp"].replace("Z", "+00:00")
-                    started = datetime.datetime.fromisoformat(stamp).timestamp()
-                except Exception:
-                    pass
+            if '"timestamp"' in line:
+                at = stamp_of(line) or at
             if "lock.sh acquire" in line:
                 is_orchestrator = True
-            if '"token_count"' in line:
+            # 누계(`total_token_usage`)가 아니라 턴별 증분을 쓴다. 둘의 관계는
+            # 실측으로 확인했다 — 증분의 합이 누계와 같다.
+            if '"token_count"' in line and at is not None and since <= at < until:
                 try:
-                    total = json.loads(line)["payload"]["info"]["total_token_usage"]
-                    turns += 1
+                    last = json.loads(line)["payload"]["info"]["last_token_usage"]
                 except Exception:
-                    pass
-        if WS not in cwd or not total or started is None:
+                    continue
+                turns += 1
+                cache += last["cached_input_tokens"]
+                # `input_tokens`는 `cached_input_tokens`를 이미 포함한다
+                # (`input_tokens + output_tokens == total_tokens`로 확인).
+                fresh += last["input_tokens"] - last["cached_input_tokens"]
+                output += last["output_tokens"]
+        if WS not in cwd or not turns:
             continue
-        if not (since <= started < until):
-            continue
-        cached = total["cached_input_tokens"]
-        add(
-            orchestrator if is_orchestrator else worker,
-            turns, total["input_tokens"], cached,
-            total["input_tokens"] - cached, total["output_tokens"],
-        )
+        add(orchestrator if is_orchestrator else worker, turns, fresh + cache, cache, fresh, output)
 
 
 def scan_claude(since, until, worker):
