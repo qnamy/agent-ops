@@ -102,16 +102,52 @@ ask)
   # 써서 지연 결과가 이번 요청의 완료로 승인된다(R-16).
   rf="$(resfile "$key" "$h.$(date +%s).$$")"
   before=0
+  step=5
   body="$(sed "s|{{RESULT_PATH}}|$rf|g" "$pf")"
-  # `--wait-submit`을 쓰지 않는다. 제출 관측이 그 시간 안에 안 끝나면 비정상
-  # 종료를 돌려주는데 프롬프트는 이미 전달돼 있다 — 2026-09-16 PR 19108에서
-  # 워커가 36초 만에 결과를 썼는데 ask는 20초에 send-failed로 빠져나갔다.
-  # 전달 여부의 판단은 결과 파일 하나로 통일한다.
-  orca terminal send --terminal "$h" --text "$body" --enter >/dev/null 2>&1 \
-    || { echo "send-failed"; exit 1; }
+  # **전달 여부의 판단은 결과 파일 하나로 통일한다.** 제출 관측이 시간 안에 안
+  # 끝나는 것을 실패로 세면 안 된다 — 2026-09-16 PR 19108에서 워커가 36초 만에
+  # 결과를 썼는데 ask는 `--wait-submit` 20초에 send-failed로 빠져나갔다.
+  #
+  # 그와 별개로 **턴이 시작조차 안 한 것**은 구분해야 한다. 2026-09-17 11:15~13:21
+  # Claude 세션 한도로 ask 17건이 즉시 거절됐는데, 결과 파일만 보는 이 루프는
+  # 0초에 끝난 거절과 19분째 생각 중인 리뷰를 구분하지 못해 거절마다 20분을 전액
+  # 지불했다. 그 대기는 공짜가 아니다 — 오케스트레이터는 영속 셸을 1분에 한 턴씩
+  # 폴링으로 사고, 12:21 회차는 78호출 중 57건(73%)이 빈 폴링이었다.
+  #
+  # 판별은 화면 문구가 아니라 orca의 구조화된 관측으로 한다. 문구 매칭은 벤더가
+  # 표현을 바꾸면 조용히 무력해지고 오탐이면 정상 리뷰를 죽인다. `--wait-submit`은
+  # `stages`에 `turn_started`를 실었는지와 `observation`이 `supported`인지를 돌려준다.
+  # 관측 자체가 안 되는 호스트(`observation != supported`)에서는 **아무것도 판정하지
+  # 않고** 옛 경로 그대로 결과 파일을 기다린다.
+  #
+  # 관측 예산은 폴링 루프와 같은 `step`이다 — 이 파일이 이미 쓰는 대기 단위이고,
+  # 여기에만 쓰는 새 상수를 만들지 않는다. 오탐이어도 파괴적이지 않다: 그 PR은
+  # 이미 worklist에 등록돼 `인계`가 되고 resolve의 「미리뷰 복구」가 이어받는다.
+  send="$(orca terminal send --terminal "$h" --text "$body" --enter \
+          --wait-submit "$step" --json 2>/dev/null)"
+  verdict="$(printf '%s' "$send" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("unknown"); raise SystemExit
+send = (d.get("result") or {}).get("send") or {}
+if not d.get("ok") or not send.get("accepted"):
+    print("send-failed"); raise SystemExit
+prompt = send.get("prompt") or {}
+if prompt.get("observation") != "supported":
+    print("unknown"); raise SystemExit
+print("started" if "turn_started" in (prompt.get("stages") or []) else "no-turn")
+')"
+  case "$verdict" in
+    send-failed) echo "send-failed"; exit 1;;
+    # 턴이 시작되지 않았다. 프롬프트는 전달됐지만 워커가 받지 못했다 — 한도 거절이
+    # 여기 해당한다. 20분을 기다리지 않고 그 자리에서 실패시킨다.
+    no-turn)     echo "no-turn"; exit 1;;
+  esac
   # `wait --for tui-idle`은 턴 시작 전에도 즉시 idle로 반환한다(실측). 기다릴
   # 조건은 TUI 상태가 아니라 결과 파일이다.
-  limit=$((TIMEOUT / 1000)); elapsed=0; step=5
+  limit=$((TIMEOUT / 1000)); elapsed=0
   while [ "$elapsed" -lt "$limit" ]; do
     after="$(stat -f %m "$rf" 2>/dev/null || echo 0)"
     if [ "$after" != "0" ] && [ "$after" != "$before" ]; then printf 'ok %s\n' "$rf"; exit 0; fi
