@@ -67,49 +67,74 @@ def add(bucket, turns, input_tokens, cache, fresh, output):
     bucket["output"] += output
 
 
-def stamp_of(line):
+def stamp_of(entry):
     try:
         return datetime.datetime.fromisoformat(
-            json.loads(line)["timestamp"].replace("Z", "+00:00")
+            entry["timestamp"].replace("Z", "+00:00")
         ).timestamp()
     except Exception:
         return None
 
 
-def scan_codex(since, until, orchestrator, worker):
+def codex_user_text(payload):
+    if payload.get("type") != "message" or payload.get("role") != "user":
+        return None
+    content = payload.get("content")
+    if isinstance(content, list):
+        content = "".join(c.get("text", "") for c in content if isinstance(c, dict))
+    return content if isinstance(content, str) else None
+
+
+def scan_codex(since, until, orchestrator, worker, human):
+    """codex 세션을 회차·워커·사람으로 가른다.
+
+    Claude 쪽과 같은 이유로 세 갈래다 — 같은 디렉터리에 사람이 띄운 개발·관측
+    세션이 섞인다. 회차는 시작 명령을 실행한 것, 워커는 `pr-session.sh`가 보낸
+    리뷰 지시를 사용자 입력으로 받은 것이고, 나머지가 사람이다. 순서가 곧
+    우선순위다 — 회차 세션도 지시 본문을 파일로 쓰므로 회차를 먼저 본다.
+    """
     for path in glob.glob(CODEX):
         if os.path.getmtime(path) < since:
             continue
-        cwd = ""
-        is_orchestrator = False
+        cwd = None
+        is_round = is_worker = False
         turns = cache = fresh = output = 0
         at = None
         for line in open(path):
-            if not cwd and '"cwd"' in line:
-                try:
-                    cwd = json.loads(line).get("payload", {}).get("cwd", "")
-                except Exception:
-                    pass
-            if '"timestamp"' in line:
-                at = stamp_of(line) or at
-            if ORCHESTRATOR_MARK.search(line):
-                is_orchestrator = True
+            try:
+                entry = json.loads(line)
+            except Exception:
+                continue
+            payload = entry.get("payload", {})
+            if cwd is None and payload.get("cwd"):
+                cwd = payload["cwd"]
+            kind = payload.get("type")
+            # 역할 식별은 구간 밖에서도 본다. 금액만 구간 안으로 자른다.
+            if not is_round and kind in ("function_call", "custom_tool_call"):
+                arguments = str(payload.get("arguments") or payload.get("input") or "")
+                is_round = bool(ROUND_CALL.search(arguments))
+            if not is_worker:
+                text = codex_user_text(payload)
+                is_worker = bool(text and WORKER_OPENER.search(text))
+            at = stamp_of(entry) or at
             # 누계(`total_token_usage`)가 아니라 턴별 증분을 쓴다. 둘의 관계는
             # 실측으로 확인했다 — 증분의 합이 누계와 같다.
-            if '"token_count"' in line and at is not None and since <= at < until:
-                try:
-                    last = json.loads(line)["payload"]["info"]["last_token_usage"]
-                except Exception:
-                    continue
-                turns += 1
-                cache += last["cached_input_tokens"]
-                # `input_tokens`는 `cached_input_tokens`를 이미 포함한다
-                # (`input_tokens + output_tokens == total_tokens`로 확인).
-                fresh += last["input_tokens"] - last["cached_input_tokens"]
-                output += last["output_tokens"]
-        if WS not in cwd or not turns:
+            if kind != "token_count" or at is None or not (since <= at < until):
+                continue
+            try:
+                last = payload["info"]["last_token_usage"]
+            except Exception:
+                continue
+            turns += 1
+            cache += last["cached_input_tokens"]
+            # `input_tokens`는 `cached_input_tokens`를 이미 포함한다
+            # (`input_tokens + output_tokens == total_tokens`로 확인).
+            fresh += last["input_tokens"] - last["cached_input_tokens"]
+            output += last["output_tokens"]
+        if cwd != ROOT or not turns:
             continue
-        add(orchestrator if is_orchestrator else worker, turns, fresh + cache, cache, fresh, output)
+        bucket = orchestrator if is_round else (worker if is_worker else human)
+        add(bucket, turns, fresh + cache, cache, fresh, output)
 
 
 def first_user_text(entry):
