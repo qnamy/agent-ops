@@ -38,9 +38,12 @@ ROOT = "~/work/orca-automations"
 # `pr-session.sh ask`가 보내는 리뷰 지시의 첫 줄. 프롬프트의 `state/ask.*.md`
 # 서두가 바뀌면 여기도 같이 고쳐야 한다.
 WORKER_OPENER = re.compile(r"저장소 PR \d+")
-# 회차만 락을 잡는다. `round.py begin`이 `lock.sh acquire`를 서브프로세스로
-# 감추므로(c11be27) 둘 다 본다.
-ORCHESTRATOR_MARK = re.compile(r"lock\.sh acquire|round\.py begin")
+# 회차는 **시작 명령을 실제로 실행한** 세션이다. `round.py begin`이
+# `lock.sh acquire`를 서브프로세스로 감추므로(c11be27) 둘 다 본다. 세션 본문에
+# 문자열이 있는지로 가르면 프롬프트를 읽거나 이 저장소를 고치는 개발 세션이
+# 오케스트레이터로 잡힌다 — 2026-09-17 실측으로 `pr-review-intake`의 실제 RUN은
+# 8건인데 그 방식의 목록이 9건이었다.
+ROUND_CALL = re.compile(r"bin/(?:round\.py begin|lock\.sh acquire) ([a-z-]+)")
 
 
 def moment(raw, default):

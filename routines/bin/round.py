@@ -16,7 +16,6 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
@@ -39,14 +38,19 @@ def sh(*args, timeout=90):
 
 
 def lock_owner(automation):
-    """lock.sh가 owner 파일에 적어 둔 획득 epoch. 없거나 stale이면 None이다.
-    STALE은 lock.sh와 같은 값이어야 한다 — 거기서 좀비로 회수되는 락을 여기서
-    살아 있다고 읽으면 끝난 회차 때문에 PR이 계속 밀린다."""
+    """lock.sh가 owner 파일에 적어 둔 획득 epoch. 없으면 None이다.
+
+    **나이를 보지 않는다.** `lock.sh check`가 나이를 보지 않고 token 일치만으로
+    소유권을 인정하므로, 여기서만 30분 stale을 적용하면 같은 락을 두 코드가 다르게
+    판정한다 — 실측 40분짜리 intake 회차(12:23~13:03)가 30분을 넘긴 뒤에도 check를
+    통과해 댓글·투표를 쓰는데, resolve는 그 회차를 부재로 읽어 사고 A가 다시 난다
+    (리뷰 C-01). 죽은 회차가 남긴 락은 다음 `acquire`가 좀비로 회수하므로, 그때까지의
+    창에서 PR 하나가 한 회차 미뤄지는 것이 두 판정이 갈리는 것보다 싸다.
+    """
     try:
-        owner = int((ROOT / "locks" / f"{automation}.lock" / "owner").read_text().strip())
+        return int((ROOT / "locks" / f"{automation}.lock" / "owner").read_text().strip())
     except (OSError, ValueError):
         return None
-    return owner if time.time() - owner <= 1800 else None
 
 
 def lock(verb, automation, token=None):
@@ -135,9 +139,11 @@ def mark_concurrent(other, worklist):
     Lingo/tx-lingo-api#19116에 같은 지적을 두 벌 달았다(스레드 91421·91425,
     91422·91426). 작성자가 네 스레드에 모두 답글을 썼다.
 
-    등록 ts가 그 회차의 시작 epoch 이상이면 그 회차가 올린 항목이다 — intake의
-    착수 등록은 ts에 runStartedEpoch를 그대로 쓰고, 리뷰 뒤 재등록은 그보다
-    늦다."""
+    등록 ts가 그 회차의 시작 epoch 이상이고 **`by`가 그 automation일 때만** 붙인다.
+    ts만 보면 resolve가 「미리뷰 복구」로 쓴 add도 조건을 만족한다 — 폴드는 같은 key의
+    가장 늦은 add를 남기므로, 도는 intake와 겹친 resolve의 자기 등록이 intake의 것으로
+    오인돼 다음 resolve 회차가 그 PR을 통째로 건너뛴다(리뷰 C-02). 2026-09-17
+    13:11:13의 #{PR}·#{PR} 등록이 resolve 토큰인데 13:01 intake가 도는 중이었다."""
     if not other:
         return
     started = lock_owner(other)
@@ -145,7 +151,7 @@ def mark_concurrent(other, worklist):
         return
     for item in worklist:
         ts = item.get("ts")
-        if isinstance(ts, int) and ts >= started:
+        if isinstance(ts, int) and ts >= started and item.get("by") == other:
             item["inFlight"] = other
 
 
