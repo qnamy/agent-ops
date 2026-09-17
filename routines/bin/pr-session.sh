@@ -31,8 +31,13 @@ TIMEOUT="${PR_SESSION_TIMEOUT_MS:-1200000}"
 
 # 저장 키는 원문 key의 **가역 인코딩**이다. 해시 접미사는 충돌 확률을 낮출 뿐
 # 일대일이 아니어서 서로 다른 PR이 같은 대장·결과 파일을 공유할 수 있다(R-10).
+# 이스케이프 문자는 `%`가 아니라 `+`다. 워커가 지시에 박힌 `%20`을 공백으로
+# 되돌려 결과를 다른 경로에 썼고, ask는 정확한 경로 하나만 보므로 완성된 판정을
+# 앞에 두고 20분을 채운 뒤 timeout했다(2026-09-17 `<공백 있는 프로젝트>/
+# tx-scraper-machinemanager#{PR}`, 두 회차 연속). `+`를 쓰면 경로가 URL로 보이지
+# 않는다. quote가 `+`를 `%2B`로 내보내므로 치환 뒤에도 일대일이다.
 slug() {
-  printf '%s' "$1" | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=""))'
+  printf '%s' "$1" | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe="").replace("%", "+"))'
 }
 
 regfile() { printf '%s/%s' "$REG" "$(slug "$1")"; }
