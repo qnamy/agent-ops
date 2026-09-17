@@ -5,8 +5,8 @@
 usage: token-report.py [<시작> [<끝>]]
        시작·끝은 epoch 또는 'YYYY-MM-DD HH:MM'. 생략하면 전체·현재.
 
-오케스트레이터와 워커를 `lock.sh acquire` 호출 여부로 가른다 — 워커는
-ADO·Slack·state 쓰기가 금지돼 락을 쓸 일이 없다.
+회차·워커·사람 셋으로 가른다. 회차는 `round.py begin`(또는 옛 `lock.sh acquire`)을
+**실행한** 세션이다 — 워커는 ADO·Slack·state 쓰기가 금지돼 락을 쓸 일이 없다.
 
 **구간은 양쪽 다 턴 단위로 가른다.** 세션 시작 시각이나 파일 mtime으로 가르면
 세션 재사용이 그대로 오차가 된다 — 2026-09-17 08:43에 15시간짜리 세션 하나가
@@ -169,7 +169,7 @@ def scan_claude(since, until, worker, human):
                 opener = first_user_text(entry)
             if entry.get("type") != "assistant":
                 continue
-            at = stamp_of(line)
+            at = stamp_of(entry)
             if at is None or not (since <= at < until):
                 continue
             usage = (entry.get("message") or {}).get("usage")
@@ -200,10 +200,10 @@ def render(label, buckets):
 def main(argv):
     since = moment(argv[1] if len(argv) > 1 else None, 0.0)
     until = moment(argv[2] if len(argv) > 2 else None, 2.0e10)
-    orchestrator, codex_worker = blank(), blank()
-    claude_worker, human = blank(), blank()
-    scan_codex(since, until, orchestrator, codex_worker)
-    scan_claude(since, until, claude_worker, human)
+    orchestrator, codex_worker, codex_human = blank(), blank(), blank()
+    claude_worker, claude_human = blank(), blank()
+    scan_codex(since, until, orchestrator, codex_worker, codex_human)
+    scan_claude(since, until, claude_worker, claude_human)
     start = datetime.datetime.fromtimestamp(since).strftime("%m-%d %H:%M") if since else "전체"
     end = datetime.datetime.fromtimestamp(until).strftime("%m-%d %H:%M") if until < 2.0e10 else "현재"
     render(
@@ -212,7 +212,8 @@ def main(argv):
             ("오케스트레이터", orchestrator),
             ("워커 codex", codex_worker),
             ("워커 claude", claude_worker),
-            ("사람 claude", human),
+            ("사람 codex", codex_human),
+            ("사람 claude", claude_human),
         ],
     )
     return 0
