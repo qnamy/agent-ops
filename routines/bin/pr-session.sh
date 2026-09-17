@@ -108,43 +108,24 @@ ask)
   # 끝나는 것을 실패로 세면 안 된다 — 2026-09-16 PR 19108에서 워커가 36초 만에
   # 결과를 썼는데 ask는 `--wait-submit` 20초에 send-failed로 빠져나갔다.
   #
-  # 그와 별개로 **턴이 시작조차 안 한 것**은 구분해야 한다. 2026-09-17 11:15~13:21
-  # Claude 세션 한도로 ask 17건이 즉시 거절됐는데, 결과 파일만 보는 이 루프는
-  # 0초에 끝난 거절과 19분째 생각 중인 리뷰를 구분하지 못해 거절마다 20분을 전액
-  # 지불했다. 그 대기는 공짜가 아니다 — 오케스트레이터는 영속 셸을 1분에 한 턴씩
-  # 폴링으로 사고, 12:21 회차는 78호출 중 57건(73%)이 빈 폴링이었다.
+  # **사고 D는 여기서 닫히지 않는다.** 2026-09-17 11:15~13:21 Claude 세션 한도로
+  # ask 17건이 즉시 거절됐고, 이 루프는 0초에 끝난 거절과 19분째 생각 중인 리뷰를
+  # 구분하지 못해 거절마다 20분을 전액 지불했다. 그 대기는 공짜가 아니다 —
+  # 오케스트레이터는 영속 셸을 1분에 한 턴씩 폴링으로 사고, 12:21 회차는 78호출 중
+  # 57건(73%)이 빈 폴링이었다.
   #
-  # 판별은 화면 문구가 아니라 orca의 구조화된 관측으로 한다. 문구 매칭은 벤더가
-  # 표현을 바꾸면 조용히 무력해지고 오탐이면 정상 리뷰를 죽인다. `--wait-submit`은
-  # `stages`에 `turn_started`를 실었는지와 `observation`이 `supported`인지를 돌려준다.
-  # 관측 자체가 안 되는 호스트(`observation != supported`)에서는 **아무것도 판정하지
-  # 않고** 옛 경로 그대로 결과 파일을 기다린다.
+  # `--wait-submit`의 `stages`로 그것을 판별하려던 수정을 되돌렸다(리뷰 C-06).
+  # orca 계약이 "timeout returns the queued/input-accepted receipt"이므로 `stages`에
+  # `turn_started`가 없는 것은 **거절이 아니라 아직 증명되지 않음**이다. 6초째
+  # 시작하는 정상 prompt를 실패로 세면 위 09-16 버그가 그대로 되살아나고, 스레드가
+  # 있는 PR에서는 `미처리`가 되어 사고 B의 래칫까지 다시 만든다.
   #
-  # 관측 예산은 폴링 루프와 같은 `step`이다 — 이 파일이 이미 쓰는 대기 단위이고,
-  # 여기에만 쓰는 새 상수를 만들지 않는다. 오탐이어도 파괴적이지 않다: 그 PR은
-  # 이미 worklist에 등록돼 `인계`가 되고 resolve의 「미리뷰 복구」가 이어받는다.
-  send="$(orca terminal send --terminal "$h" --text "$body" --enter \
-          --wait-submit "$step" --json 2>/dev/null)"
-  verdict="$(printf '%s' "$send" | python3 -c '
-import json, sys
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print("unknown"); raise SystemExit
-send = (d.get("result") or {}).get("send") or {}
-if not d.get("ok") or not send.get("accepted"):
-    print("send-failed"); raise SystemExit
-prompt = send.get("prompt") or {}
-if prompt.get("observation") != "supported":
-    print("unknown"); raise SystemExit
-print("started" if "turn_started" in (prompt.get("stages") or []) else "no-turn")
-')"
-  case "$verdict" in
-    send-failed) echo "send-failed"; exit 1;;
-    # 턴이 시작되지 않았다. 프롬프트는 전달됐지만 워커가 받지 못했다 — 한도 거절이
-    # 여기 해당한다. 20분을 기다리지 않고 그 자리에서 실패시킨다.
-    no-turn)     echo "no-turn"; exit 1;;
-  esac
+  # 남은 길은 둘이고 지금은 어느 쪽도 근거가 없다. (1) orca가 거절을 **양의 신호**로
+  # 돌려주면 그것으로 fast-fail한다. (2) 정상 부하에서 워커 한 건이 몇 분 걸리는지를
+  # 재면 그 측정 위에 상한을 정할 수 있다. 화면 문구 매칭은 벤더가 표현을 바꾸면
+  # 조용히 무력해지고 오탐이면 정상 리뷰를 죽이므로 쓰지 않는다.
+  orca terminal send --terminal "$h" --text "$body" --enter >/dev/null 2>&1 \
+    || { echo "send-failed"; exit 1; }
   # `wait --for tui-idle`은 턴 시작 전에도 즉시 idle로 반환한다(실측). 기다릴
   # 조건은 TUI 상태가 아니라 결과 파일이다.
   limit=$((TIMEOUT / 1000)); elapsed=0

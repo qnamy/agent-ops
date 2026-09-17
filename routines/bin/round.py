@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
@@ -38,19 +39,28 @@ def sh(*args, timeout=90):
 
 
 def lock_owner(automation):
-    """lock.sh가 owner 파일에 적어 둔 획득 epoch. 없으면 None이다.
+    """다른 automation의 회차가 **지금 돌고 있는지**. 살아 있으면 획득 epoch, 아니면 None.
 
-    **나이를 보지 않는다.** `lock.sh check`가 나이를 보지 않고 token 일치만으로
-    소유권을 인정하므로, 여기서만 30분 stale을 적용하면 같은 락을 두 코드가 다르게
-    판정한다 — 실측 40분짜리 intake 회차(12:23~13:03)가 30분을 넘긴 뒤에도 check를
-    통과해 댓글·투표를 쓰는데, resolve는 그 회차를 부재로 읽어 사고 A가 다시 난다
-    (리뷰 C-01). 죽은 회차가 남긴 락은 다음 `acquire`가 좀비로 회수하므로, 그때까지의
-    창에서 PR 하나가 한 회차 미뤄지는 것이 두 판정이 갈리는 것보다 싸다.
+    `lock.sh`의 두 동사는 서로 다른 질문에 답한다 — `check`는 "내가 아직 주인인가"라
+    token만 보고, `acquire`는 "기존 주인이 살아 있나"라 STALE=1800으로 좀비를 회수한다.
+    여기서 묻는 것은 후자이므로 `acquire`와 같은 기준을 쓴다. 1라운드 리뷰 C-01을
+    "두 코드가 같은 락을 다르게 판정한다"로 받아들여 나이 판정을 지웠던 것은 이
+    구분을 놓친 것이고, 그렇게 두면 죽은 owner가 회수될 때까지 resolve가 그 PR을
+    매번 `inFlight`로 미뤄 무기한 멈춘다(2라운드 C-01). 게이트가 정상화된 뒤 intake는
+    새 Slack 활동이 없으면 SKIP이라 `acquire` 자체가 오래 안 일어날 수 있어, 그
+    경로가 오히려 흔해졌다.
+
+    30분을 넘겨 도는 살아 있는 회차는 여기서 부재로 읽힌다. 래칫이 풀린 뒤 회차는
+    55초에 끝나므로(2026-09-17 14:21:08 실측) 그 창은 더는 상시가 아니다. 다시
+    길어지면 그때 락에 heartbeat를 넣는 것이 옳고, 그 전에 만들지 않는다.
+
+    STALE의 정본은 `lock.sh`다 — 그쪽을 바꾸면 여기도 같이 바꾼다.
     """
     try:
-        return int((ROOT / "locks" / f"{automation}.lock" / "owner").read_text().strip())
+        owner = int((ROOT / "locks" / f"{automation}.lock" / "owner").read_text().strip())
     except (OSError, ValueError):
         return None
+    return owner if time.time() - owner <= 1800 else None
 
 
 def lock(verb, automation, token=None):
