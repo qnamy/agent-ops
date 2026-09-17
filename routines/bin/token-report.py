@@ -47,12 +47,19 @@ WORKER_OPENER = re.compile(r"review-result\.")
 # 개발 세션이 회차가 된다(2026-09-10 12:22·12:27 두 세션이 그렇게 잡혔고 그날
 # 실제 RUN은 0건이다). 셸 명령만 꺼내 **명령 경계**에서 대조한다. `round.py begin`이
 # `lock.sh acquire`를 서브프로세스로 감추므로(c11be27) 둘 다 본다.
-# 인자는 `{"cmd":"…"}`(JSON)과 `cmd: "…"`(다중행) 두 표기로 온다. 앞의 것은
-# 키가 따옴표에 싸여 있어 리터럴 `cmd:`로는 안 잡힌다 — 한쪽만 보면 회차의
-# 대부분을 놓친다(09-17 00:00~14:00 구간에서 21건 중 9건만 잡혔다).
-SHELL_COMMAND = re.compile(r'"?cmd"?\s*:\s*"((?:[^"\\]|\\.)*)"')
+# 실행된 셸 입력은 두 자리로 온다 — 단발 실행의 `cmd`와 영속 셸에 보내는
+# `write_stdin`의 `chars`다(영속 셸은 커밋 `15d75f4`가 들였다). `chars`를 빼면
+# 영속 셸을 쓰는 회차가 통째로 빠진다(09-17 08:50 deploy 회차 실측). 키는
+# `{"cmd":"…"}`(JSON)과 `cmd: "…"`(다중행) 두 표기로 오고, 앞의 것은 키가
+# 따옴표에 싸여 있어 리터럴 `cmd:`로는 안 잡힌다.
+SHELL_INPUT = re.compile(r'"?(?:cmd|chars)"?\s*:\s*"((?:[^"\\]|\\.)*)"')
+# 명령 경계에서만 대조한다 — 따옴표 안에 든 `grep "bin/round.py begin" prompts/`
+# 같은 것이 걸리지 않게. 영속 셸 입력은 `if <명령>; then …` 형태로도 오므로
+# 그 앞자리도 경계로 본다.
 ROUND_CALL = re.compile(
-    r"(?:^|[;&|]\s*)(?:(?:python3?|bash|sh)\s+)?bin/(?:round\.py begin|lock\.sh acquire)\s+([a-z-]+)"
+    r"(?:^|[;&|(]\s*|\b(?:if|then|else|do)\s+)"
+    r"(?:(?:python3?|bash|sh)\s+)?bin/(?:round\.py begin|lock\.sh acquire)\s+([a-z-]+)",
+    re.M,
 )
 
 
@@ -61,7 +68,7 @@ def is_round_call(payload):
     if payload.get("type") not in ("function_call", "custom_tool_call"):
         return False
     arguments = str(payload.get("arguments") or payload.get("input") or "")
-    return any(ROUND_CALL.search(c) for c in SHELL_COMMAND.findall(arguments))
+    return any(ROUND_CALL.search(c) for c in SHELL_INPUT.findall(arguments))
 
 
 def moment(raw, default):
