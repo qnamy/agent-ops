@@ -158,6 +158,9 @@ close)
 sweep)
   keep=""
   for k in "$@"; do keep="$keep $(slug "$k")"; done
+  # 접두어는 slug에서 뽑는다. 인코딩을 리터럴로 박아 두면 slug가 바뀔 때 조용히
+  # 어긋나 아래 R-40 가드가 풀린다.
+  dpfx="$(slug "deploy:")"
   for f in "$REG"/*; do
     [ -f "$f" ] || continue
     b="$(basename "$f")"
@@ -165,7 +168,7 @@ sweep)
     # deploy-approve-intake의 세션은 이 sweep의 것이 아니다. 두 automation의 락이
     # 별개라 resolve의 sweep이 deploy의 진행 중 ask를 죽일 수 있다(R-40). deploy는
     # 결과를 읽으면 스스로 close한다.
-    case "$b" in deploy%3A*) continue;; esac
+    case "$b" in "$dpfx"*) continue;; esac
     case " $keep " in *" $b "*) continue;; esac
     h="$(cat "$f" 2>/dev/null || true)"
     [ -n "$h" ] && { gone "$h" || echo "leaked-session: $h" >&2; }
