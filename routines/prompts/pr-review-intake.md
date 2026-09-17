@@ -67,6 +67,7 @@ oldest = max(oldest, runStartedEpoch - 345600)
 **completed PR의 source commit을 로컬에서 얻을 수 없으면 `처리 불가`로 분류한다.** 병합 시 `refs/pull/<id>/source`가 삭제되어 재시도로 복구되지 않는다. active PR의 커밋 부재는 `미처리`다. `처리 불가`는 보고에 사유와 함께 남긴다.
 
 - 내 루트 댓글이 이미 있으면 재리뷰·재대댓글하지 않는다. **`commentType`이 `system`인 스레드는 내 이름으로 생성돼도 리뷰가 아니다** — 투표·푸시 알림이 그렇다.
+- **내 루트 댓글이 없어도 그 커밋을 이미 판정했으면 다시 리뷰하지 않는다.** `python3 bin/prior-review.py <project> <repository> <pullRequestId>`의 `summary.srcCommit`이 맥락 `context.prs` 항목의 `srcCommit`과 같으면 그 커밋은 판정이 끝난 것이다. 투표·worklist 등록·세션 요청을 하지 않고 `이미 리뷰함`으로 보고한다. 멱등 판정을 내 루트 `text` 댓글로만 하면 **지적 0건 PR에는 그 댓글이 없어** 가드가 걸리지 않는다 — 11:03에 no-findings로 승인·close된 `tx-fe/<레포 E>#{PR}`이 같은 커밋 `263cdd08`로 12:04와 13:27에 다시 리뷰돼 1차 리뷰 한 벌을 통째로 버렸다(2026-09-17 실측). `deploy-approve-intake`가 같은 원장을 같은 규칙으로 읽는다. `srcCommit`이 다르면 리뷰 이후 새 커밋이 올라온 것이므로 평소대로 리뷰한다.
 - abandoned는 건너뛴다.
 - active와 completed는 모두 리뷰한다.
 
@@ -101,14 +102,16 @@ oldest = max(oldest, runStartedEpoch - 345600)
 
 completed PR을 새로 리뷰했으면 원 Slack thread를 먼저 읽어 같은 취지의 대댓글이 없을 때만 한 메시지에 합쳐 참고용 리뷰 대댓글을 보낸다. 투표·Slack 대댓글 직전에도 각각 lock check를 한다.
 
-PR 하나의 ADO·Slack·로컬 읽기·쓰기·상태 기록 실패는 그 PR만 `미처리`로 남기고 다음 PR을 계속 처리한다. 모든 대상이 성공해야만 회차가 성공이며, **`처리 불가`로 분류한 PR은 이 판정에서 뺀다.**
+PR 하나의 ADO·Slack·로컬 읽기·쓰기·상태 기록 실패는 그 PR만 `미처리`로 남기고 다음 PR을 계속 처리한다. 모든 대상이 성공해야만 회차가 성공이며, **`처리 불가`와 `인계`로 분류한 PR은 이 판정에서 뺀다.**
+
+**`인계`는 착수 투표와 worklist `op:"add"`까지 성공한 뒤 코드 판정만 실패한 PR이다.** 세션 `ensure` 실패, `ask`가 `ok <경로>`를 주지 않음, timeout, 결과 JSON 읽기 실패가 여기 해당한다. 그 PR은 `wait-for-author`가 찍힌 채 worklist에 남아 `pr-review-resolve`의 「미리뷰 복구」가 책임지므로 **Slack 창이 그 PR을 다시 필요로 하지 않는다** — 리뷰 전에 등록하는 이유가 그것이다. 이것을 `미처리`로 세면 그 PR 하나가 watermark와 게이트를 래칫으로 잠근다: 게이트가 안 올라가니 precheck가 매 회차 `new-channel-activity`로 RUN하고, `lastRunTs`가 안 전진하니 창이 `min(runStartedEpoch - 1200, lastRunTs - 600)`으로 계속 넓어지고, 창이 넓어지니 대상이 늘고, 대상이 늘수록 한 건이라도 실패할 확률이 올라가 다시 커밋을 못 한다. 2026-09-17 07:20부터 13:30까지 여섯 회차 연속으로 이 고리를 돌았다 — 게이트는 09-16 22:11, `lastRunTs`는 07:21:10에 고정됐고 창이 6시간으로 벌어졌으며, 30분짜리 회차가 락이 비는 즉시 다시 붙었다. 보고에는 `인계`한 PR과 그 사유를 남긴다. **코드 판정 전에 실패한 PR은 `인계`가 아니다** — 등록이 없으면 resolve가 그 PR을 모르므로 그대로 `미처리`이고 게이트를 막는 것이 맞다.
 
 ## 3. 상태 기록
 
-raw 수집이 0건이 아니고 모든 대상이 성공했으며 라이브일 때만 `bash bin/guarded.sh pr-review-intake "$TOKEN" run python3 bin/mark.py pr-review-intake <runStartedEpoch> '<이 회차에 성공적으로 리뷰한 PR의 JSON 배열, 현행 reviewedPrs 항목 형식>'`을 실행한다. 스크립트가 `lastRunTs` 전진(뒤로 가지 않는다)·`reviewedPrs` append·오래된 것부터 500건 트림·원자 교체를 한다 — 이 세션이 marks 파일을 읽거나 쓰지 않는다. raw 0건·PR 실패·상태 기록 실패면 실행하지 않는다. dry-run에서는 기록 예정만 보고한다.
+raw 수집이 0건이 아니고 모든 대상이 성공했으며(`처리 불가`·`인계`는 위와 같이 이 판정에서 뺀다) 라이브일 때만 `bash bin/guarded.sh pr-review-intake "$TOKEN" run python3 bin/mark.py pr-review-intake <runStartedEpoch> '<이 회차에 성공적으로 리뷰한 PR의 JSON 배열, 현행 reviewedPrs 항목 형식>'`을 실행한다. **`인계`·`처리 불가`·`이미 리뷰함`은 그 배열에 넣지 않는다** — 이 회차가 판정한 PR이 아니다. 스크립트가 `lastRunTs` 전진(뒤로 가지 않는다)·`reviewedPrs` append·오래된 것부터 500건 트림·원자 교체를 한다 — 이 세션이 marks 파일을 읽거나 쓰지 않는다. raw 0건·PR 실패·상태 기록 실패면 실행하지 않는다. dry-run에서는 기록 예정만 보고한다.
 
 ## 4. 회차 종료와 보고
 
-정상 경로에서는 `python3 bin/round.py finish pr-review-intake "$TOKEN" [--commit]`를 **한 번** 실행한다. 스크립트가 lock check → 게이트 commit → 락 해제를 한 번에 처리한다. `--commit`은 모든 대상과 상태 기록이 성공했고 라이브일 때만 붙인다. dry-run, raw 0건 가드, PR 하나라도 미처리, 또는 상태 기록 실패에서는 commit하지 않는다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`·`pr-session.sh sweep`을 따로 부르지 않는다.
+정상 경로에서는 `python3 bin/round.py finish pr-review-intake "$TOKEN" [--commit]`를 **한 번** 실행한다. 스크립트가 lock check → 게이트 commit → 락 해제를 한 번에 처리한다. `--commit`은 모든 대상과 상태 기록이 성공했고 라이브일 때만 붙인다. dry-run, raw 0건 가드, PR 하나라도 `미처리`, 또는 상태 기록 실패에서는 commit하지 않는다 — `처리 불가`·`인계`·`이미 리뷰함`은 `미처리`가 아니므로 commit을 막지 않는다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`·`pr-session.sh sweep`을 따로 부르지 않는다.
 
 보고는 한국어로 조회 창·96시간 캡·raw 0건 여부, 감지·제외·미처리 PR과 사유, PR별 댓글/투표/Slack 대댓글, worklist·감사 로그·mark·commit 여부, dry-run 수행 예정 목록을 남긴다. 크리덴셜은 보고하지 않는다.
