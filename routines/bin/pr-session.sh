@@ -102,7 +102,6 @@ ask)
   # 써서 지연 결과가 이번 요청의 완료로 승인된다(R-16).
   rf="$(resfile "$key" "$h.$(date +%s).$$")"
   before=0
-  step=5
   body="$(sed "s|{{RESULT_PATH}}|$rf|g" "$pf")"
   # **전달 여부의 판단은 결과 파일 하나로 통일한다.** 제출 관측이 시간 안에 안
   # 끝나는 것을 실패로 세면 안 된다 — 2026-09-16 PR 19108에서 워커가 36초 만에
@@ -128,7 +127,7 @@ ask)
     || { echo "send-failed"; exit 1; }
   # `wait --for tui-idle`은 턴 시작 전에도 즉시 idle로 반환한다(실측). 기다릴
   # 조건은 TUI 상태가 아니라 결과 파일이다.
-  limit=$((TIMEOUT / 1000)); elapsed=0
+  limit=$((TIMEOUT / 1000)); elapsed=0; step=5
   while [ "$elapsed" -lt "$limit" ]; do
     after="$(stat -f %m "$rf" 2>/dev/null || echo 0)"
     if [ "$after" != "0" ] && [ "$after" != "$before" ]; then printf 'ok %s\n' "$rf"; exit 0; fi
