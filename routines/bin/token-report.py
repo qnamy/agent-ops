@@ -83,7 +83,7 @@ def scan_codex(since, until, orchestrator, worker):
                     pass
             if '"timestamp"' in line:
                 at = stamp_of(line) or at
-            if "lock.sh acquire" in line:
+            if ORCHESTRATOR_MARK.search(line):
                 is_orchestrator = True
             # 누계(`total_token_usage`)가 아니라 턴별 증분을 쓴다. 둘의 관계는
             # 실측으로 확인했다 — 증분의 합이 누계와 같다.
