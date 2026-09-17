@@ -31,7 +31,10 @@ import sys
 
 CODEX = os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")
 CLAUDE = os.path.expanduser("~/.claude/projects/-Users-<user>-work-orca-automations/*.jsonl")
-WS = "orca-automations"
+# cwd는 정확히 대조한다. 부분 일치로 고르면 같은 레포의 다른 워크트리 세션이
+# 섞인다 — `git worktree list`에 `~/orca/workspaces/orca-automations/window-start`가
+# 있고 그 경로에도 이 문자열이 들어 있다. 세 도구가 같은 기준을 쓴다.
+ROOT = "~/work/orca-automations"
 # `pr-session.sh ask`가 보내는 리뷰 지시의 첫 줄. 프롬프트의 `state/ask.*.md`
 # 서두가 바뀌면 여기도 같이 고쳐야 한다.
 WORKER_OPENER = re.compile(r"저장소 PR \d+")
