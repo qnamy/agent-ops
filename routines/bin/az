@@ -1,0 +1,32 @@
+#!/bin/sh
+# sanitized template — 실제 값은 로컬 ROUTINE-CONFIG에서 주입된다.
+# bin/az <automation> <az 인자...>
+# 첫 인자가 automation 이름이고 그것이 AZURE_CONFIG_DIR을 가른다.
+# automation별로 나누는 이유: 10분 주기 4개가 같은 분에 발화하고 automation별
+# 락은 서로를 직렬화하지 않는다. 한 디렉터리를 공유하면 토큰 갱신과 cache
+# 쓰기가 충돌한다. (현행 codex-wrappers/*.sh:24-32와 같은 격리)
+# 시드 완료 판정은 azureProfile.json 존재다 — 디렉터리 존재로 판정하면
+# 부분 복사가 굳어 이후 모든 호출이 실패한다.
+set -u
+A="${1:?usage: az <automation> <args...>}"; shift
+ROOT="${ROUTINE_STATE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)/state}"
+D="$ROOT/azure/$A"
+# 시드는 런타임이 아니라 이행 작업이다(bin/seed-azure.sh). 여기서 $HOME/.azure를
+# 읽지 않는 이유는 루틴이 도는 동안 홈 디렉터리를 만지지 않기 위해서다.
+# 없으면 실패한다 — 회차는 "대상 특정 전 실패"로 중단한다(설계 DEC-003).
+[ -f "$D/azureProfile.json" ] || {
+  echo "az: no azure profile for '$A' — bin/seed-azure.sh 를 먼저 돌려라" >&2
+  exit 78
+}
+# 확장은 automation 6개가 공유한다(20MB, 읽기만 한다). 없으면 az가 매 호출마다
+# azure-devops 확장 재설치를 시도해 repos·devops 명령이 실패한다.
+EXT="$ROOT/azure-ext"
+# 마커는 시드가 끝난 뒤에만 쓰인다 — 중간에 끊긴 사본을 완료로 보지 않는다.
+[ -f "$EXT/.seeded" ] || {
+  echo "az: azure-ext 시드가 완료되지 않았다 — bin/seed-azure.sh 를 먼저 돌려라" >&2
+  exit 78
+}
+AZURE_CONFIG_DIR="$D" \
+AZURE_EXTENSION_DIR="$EXT" \
+AZURE_DEVOPS_CACHE_DIR="$D/devops-cache" \
+  exec az "$@"

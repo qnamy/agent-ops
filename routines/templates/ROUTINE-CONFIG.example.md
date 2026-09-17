@@ -1,37 +1,41 @@
 # ROUTINE-CONFIG.md (예시 스켈레톤)
 
-> 루틴 지시서들은 회사·개인 식별값을 하드코딩하지 않고, 실행 시작 시 이 문서를 읽어 값을 주입받는다.
-> 실제 파일은 비공개 워크스페이스(`{workspace}/ROUTINE-CONFIG.md`)에 두고, 여기에는 필드 구조만 공개한다.
+> 루틴 지시서는 회사·개인 식별값을 하드코딩하지 않고 이 문서에서 주입받는다. 실제 파일은 비공개로 `~/work/ROUTINE-CONFIG.md`에 두고, 여기에는 필드 구조만 공개한다.
+>
+> **줄 모양을 바꾸지 않는다.** `bin/precheck.py`가 회차 전에 이 파일을 파싱해 해석값을 맥락 파일에 싣는다(`config_ado_org`·`config_channel`·`config_user`·`config_slack_user`·`config_bot_user`·`config_mentions`·`config_pr_url_pattern`·`config_disclaimer`). 파싱에 실패하면 그 항목이 빠지고 세션이 이 원문을 직접 읽는 폴백으로 내려간다.
+>
+> ⚠️ **크리덴셜 값은 여기 두지 않는다** — 경로만 참조하고 값은 `state/`(600)에 둔다.
 
-## 계정
-- 사용자: `{user_email}` · Slack user `{user_slack_id}`
-- 봇(✅ 반응 전용): Slack App user_id `{qa_bot_slack_id}` · bot_id `{qa_bot_id}`
-  - 봇 토큰(값 아님, 경로): `{qa_bot_token_path}` (xoxb-, chmod 600, scopes `reactions:write`·`chat:write`)
-  - 봇 반응 헬퍼: `sh {qa_bot_react_helper} <CHANNEL_ID> <MSG_TS>`
+## 신원
+- 사용자: `me@example.com` · Slack user `U000USER000`
+- 봇(✅ 반응 전용): Slack App · Slack user `U000BOT0000` · bot_id `B000BOT0000`
+  - 봇 토큰(값 아님, 경로): `~/work/orca-automations/state/.deploy-approval-bot-token` (xoxb-, chmod 600, scopes `reactions:write`·`chat:write`)
+  - 봇 반응 헬퍼: `sh ~/work/orca-automations/state/deploy-approval-react.sh <CHANNEL_ID> <MSG_TS>`
 
 ## Slack
-- 채널 `{review_channel_name}` = `{review_channel}` (PR 리뷰요청)
-- 채널 `{qa_deploy_channel_name}` = `{qa_deploy_channel}` (배포 승인요청)
-- 리뷰 대상 판정 멘션: `{dev_be_mention}` / `{dev_mention}` (`<!subteam^…>` 그룹 멘션 리터럴)
-- 처리 제외: 본인(`{user_slack_id}`) 작성, 봇(`{qa_bot_slack_id}`) 작성
+- 채널 `#pr-review-requests` = `C000REVIEW0` (PR 리뷰요청)
+- 채널 `#deploy-approval` = `C000DEPLOY0` (배포 승인요청)
+- 대상 유저그룹 멘션(하나 이상 포함해야 처리): `@dev_be`=`<!subteam^S000BE00000>` · `@dev`=`<!subteam^S000DEV0000>`
+- 처리 제외 예: FE 그룹 `@dev_fe`=`<!subteam^S000FE00000>`, 본인(`U000USER000`) 작성, 봇(`U000BOT0000`) 작성
 
 ## Azure DevOps
-- 조직: `{ado_org}` (`--org https://dev.azure.com/{ado_org}/`)
-- PR URL 패턴: `https://dev.azure.com/{ado_org}/{project}/{repo}/pullrequest/{id}`
+- 조직: `ExampleOrg`
+- PR URL 패턴: `https://dev.azure.com/ExampleOrg/{project}/_git/{repo}/pullrequest/{PR_ID}`
+- 로컬 레포 경로 규칙: `~/work/{repo}`
 
 ## Jira
-- 사이트: `{jira-site}.atlassian.net`
-- 배포 승인 목표 상태명: `{approved_status}` (상태명·전이명 비교는 항상 공백 제거 후 수행)
+- cloudId: `example.atlassian.net`
+- 티켓 링크: `https://example.atlassian.net/browse/{KEY}` (KEY = 대문자프로젝트-숫자)
+- 배포 승인 목표 상태명: `배포승인` (상태명·전이명 비교는 항상 **공백 제거 후** 수행)
 
-## 상태 파일 (routine-state)
-- 상태 루트: `{workspace}/.routine-state/`
-- PR 댓글 워크리스트: `pr-comment-worklist.json`
-- watermark·리뷰 상태: `slack-pr-review-autopilot.state.json` (`lastRunAt` + `reviewedPrs[]`, 오버랩 스캔 10분)
-- 리뷰 지적 누적 로그: `review-findings.jsonl` (quality-digest 입력)
-- 배포 승인 보류 추적: `qa-deploy-pending-holds.json` (7일 만료)
-- 다이제스트 후보 상태: `digest-candidates.json` (3회 노출·무응답 시 만료)
+## 문구·마커
+- PR 댓글 면책 문구(모든 리뷰/대댓글 마지막 2줄):
+  ```
+  ⚠️ AI를 활용한 댓글 작성 테스트 중입니다. 댓글이 이상한 경우 신고해주세요.
+  by Claude Code
+  ```
+- 배포 승인 루틴 답글 멱등 마커(보류 사유·미해소 사유·해소 확인 답글 마지막 줄): `_by deploy-approval-autopilot 🤖_`
 
-## 스케줄
-- 통합 디스패처: 평일 07~20시 10분마다 (`*/10 7-20 * * 1-5`)
-- completed-comment-resolver: 평일 17시 1회
-- quality-digest: 매주 금 08:00
+## 타이밍
+- 폴링 스케줄(업무시간): 평일 07~20시 10분마다 (`*/10 7-20 * * 1-5`)
+- 시간 윈도우(경계 누락 방지): PR 리뷰 최근 **20분**, 배포 승인 최근 **25분**
