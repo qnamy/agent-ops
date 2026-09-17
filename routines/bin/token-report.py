@@ -26,11 +26,15 @@ import datetime
 import glob
 import json
 import os
+import re
 import sys
 
 CODEX = os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")
 CLAUDE = os.path.expanduser("~/.claude/projects/-Users-<user>-work-orca-automations/*.jsonl")
 WS = "orca-automations"
+# `pr-session.sh ask`가 보내는 리뷰 지시의 첫 줄. 프롬프트의 `state/ask.*.md`
+# 서두가 바뀌면 여기도 같이 고쳐야 한다.
+WORKER_OPENER = re.compile(r"저장소 PR \d+")
 
 
 def moment(raw, default):
