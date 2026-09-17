@@ -25,7 +25,7 @@ ADO는 모두 `bash bin/az pr-review-resolve ...`로 호출한다. **이 세션�
 
 `python3 bin/round.py begin pr-review-resolve`를 **한 번** 실행한다. dry-run 판정·락 획득·게이트 스냅샷·인증 확인·맥락 파일 읽기·worklist 폴드를 스크립트가 한 번에 처리해 JSON 한 줄로 돌려준다. 이것들을 따로 실행하지 않는다 — 각각이 도구 호출 한 턴이었고 할 일 없는 회차조차 그것만으로 8턴을 썼다.
 
-받는 값은 `live`(dry-run 여부)·`token`·`runStartedEpoch`(토큰과 같은 값)·`snapshot`(pending을 snapshot으로 복사했음)·`auth`(`bin/az` 인증 확인 결과)·`context`(맥락 파일 `state/gate/context.pr-review-resolve.json` 내용, 없으면 null)·`worklist`(`pr-review-worklist.jsonl`의 활성 집합, 폴드 완료)다. `token`을 `TOKEN`으로 보관한다. worklist 항목에 `inFlight`가 붙어 있으면 그 automation의 회차가 **지금 돌고 있고 그 항목을 등록한 것이 그 회차다** — `begin`이 그 automation의 락 소유 epoch과 항목의 등록 ts를 비교해 붙인다.
+받는 값은 `live`(dry-run 여부)·`token`·`runStartedEpoch`(토큰과 같은 값)·`snapshot`(pending을 snapshot으로 복사했음)·`auth`(`bin/az` 인증 확인 결과)·`context`(맥락 파일 `state/gate/context.pr-review-resolve.json` 내용, 없으면 null)·`worklist`(`pr-review-worklist.jsonl`의 활성 집합, 폴드 완료)다. `token` 값을 이 세션이 기억한다. **셸 변수에 담지 않는다** — Bash 호출끼리 셸 변수를 물려주지 않아 `$TOKEN`은 빈 값으로 전개되고, 그러면 `guarded.sh`가 exit 3으로 끝나 이 회차의 쓰기가 전부 막힌다. 아래 본문의 `"$TOKEN"`은 그 자리에 **토큰 값을 그대로 박으라는** 표기다. worklist 항목에 `inFlight`가 붙어 있으면 그 automation의 회차가 **지금 돌고 있고 그 항목을 등록한 것이 그 회차다** — `begin`이 그 automation의 락 소유 epoch과 항목의 등록 ts를 비교해 붙인다.
 
 `error`가 있으면(`lock-busy`·`no-pending`·`auth-failed`·`fold-failed`) 그 사유로 **대상 특정 전 실패**를 보고하고 종료한다 — 스크립트가 락을 이미 풀었으므로 release를 부르지 않는다.
 

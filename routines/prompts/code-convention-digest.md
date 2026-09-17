@@ -25,7 +25,7 @@ Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 �
 
 `python3 bin/round.py begin code-convention-digest`를 **한 번** 실행한다. dry-run 판정·락 획득·맥락 파일 읽기를 스크립트가 한 번에 처리해 JSON 한 줄로 돌려준다. 이것들을 따로 실행하지 않는다 — 각각이 도구 호출 한 턴이었고 할 일 없는 회차조차 그것만으로 8턴을 썼다.
 
-받는 값은 `live`(dry-run 여부)·`token`·`runStartedEpoch`(토큰과 같은 값)·`context`(맥락 파일 `state/gate/context.code-convention-digest.json` 내용, 없으면 null)다. `token`을 `TOKEN`으로 보관한다.
+받는 값은 `live`(dry-run 여부)·`token`·`runStartedEpoch`(토큰과 같은 값)·`context`(맥락 파일 `state/gate/context.code-convention-digest.json` 내용, 없으면 null)다. `token` 값을 이 세션이 기억한다. **셸 변수에 담지 않는다** — Bash 호출끼리 셸 변수를 물려주지 않아 `$TOKEN`은 빈 값으로 전개되고, 그러면 `guarded.sh`가 exit 3으로 끝나 이 회차의 쓰기가 전부 막힌다. 아래 본문의 `"$TOKEN"`은 그 자리에 **토큰 값을 그대로 박으라는** 표기다.
 
 `error`가 있으면(`lock-busy`) 그 사유로 **대상 특정 전 실패**를 보고하고 종료한다 — 스크립트가 락을 이미 풀었으므로 release를 부르지 않는다.
 
