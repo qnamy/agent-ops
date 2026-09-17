@@ -15,7 +15,7 @@ LOG="$REPO/.sync-templates.log"
   fi
 
   cd "$REPO" || exit 1
-  git add routines/templates
+  git add routines/bin routines/prompts
 
   if git diff --cached --quiet; then
     echo "변경 없음"
