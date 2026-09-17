@@ -1,7 +1,7 @@
 <!-- sanitized template — 실제 값은 로컬 ROUTINE-CONFIG에서 주입된다. 원본은 비공개 워크스페이스에서 운영 중. -->
 # deploy-approve-intake
 
-이 프롬프트 본문은 automation 트리거가 이미 줬다. **이 파일을 다시 읽지 않고, 자기 지시를 `rg`·`grep`으로 검색하지 않는다.** 재읽기 한 번과 자기 검색 한 번이 회차 도구 출력의 54%였다(2026-09-16 실측 7,659토큰). **개인 메모리(`~/.codex/memories/`)도 읽지 않는다** — 2026-09-17 07:20 회차가 첫 턴에 그것을 `rg`로 28,337자 올려 11턴 내내 다시 실었다. 무인 회차의 판단은 이 프롬프트와 `ROUTINE-CONFIG.md`만으로 한다.
+이 프롬프트 본문은 automation 트리거가 이미 줬다. **이 파일을 다시 읽지 않고, 자기 지시를 `rg`·`grep`으로 검색하지 않는다.** 재읽기 한 번과 자기 검색 한 번이 회차 도구 출력의 54%였다(2026-09-16 실측 7,659토큰). **개인 메모리(`~/.claude/`·`~/.codex/memories/`)도 읽지 않는다** — 2026-09-17 07:20 회차가 첫 턴에 그것을 `rg`로 28,337자 올려 11턴 내내 다시 실었다. 무인 회차의 판단은 이 프롬프트와 `ROUTINE-CONFIG.md`만으로 한다.
 
 이 실행은 `#deploy-approval`의 새 배포 승인 요청을 수집해 PR을 판정하고, 통과한 요청에 봇 ✅를 달며, 보류 요청만 `state/deploy-approve-worklist.jsonl`에 등록한다. `~/work/ROUTINE-CONFIG.md`를 필요 시 읽어 채널, 사용자, ADO 조직, Jira 좌표와 멱등 마커를 얻는다. 회사 좌표·GUID·크리덴셜을 하드코딩하거나 출력·기록하지 않는다. `~/work/.legacy-routine-state/`와 `~/work/legacy-routines/`는 읽지도 쓰지도 않는다 — 이 워크스페이스의 `state/`만 상태로 쓴다.
 
@@ -9,12 +9,12 @@
 
 ADO 호출은 모두 `bash bin/az deploy-approve-intake ...`로 한다. **이 세션은 `git` 명령을 실행하지 않는다.** 코드 판정은 PR별 세션이 하고 이 세션은 그 결과만 쓴다. diff가 이 컨텍스트에 들어오면 회차가 끝날 때까지 매 턴 다시 읽힌다(2026-09-16 11:20 회차가 `git diff` 3회로 72,860자를 올렸다). **쓰기 직전의 lock check는 두 형태다.** 셸 명령인 쓰기(`bin/az`의 POST·PATCH·`set-vote`, 원장·worklist append, `state/deploy-approval-react.sh`, `pr-session.sh close`, `mark.py`)는 `bash bin/guarded.sh deploy-approve-intake "$TOKEN" run <명령…>` 또는 `bash bin/guarded.sh deploy-approve-intake "$TOKEN" append <파일> '<한 줄>'`로 실행한다 — 스크립트가 check를 먼저 하고 실패하면 명령을 실행하지 않고 exit 3으로 끝나며, 그때는 소유권을 잃은 것이니 그 자리에서 종료하고 상태 기록·commit·release를 시도하지 않는다. 셸 명령이 아닌 쓰기 — MCP 도구(Slack·Jira·Confluence)와 파일 도구로 덮어쓰는 `state/ask.*.md`·`state/ado-body.*.json` 같은 모든 `state/` 파일 — 는 직전에 `bash bin/lock.sh check deploy-approve-intake "$TOKEN"`을 따로 한다. **아래 본문의 'lock check 뒤'는 이 규칙대로 읽는다** — 셸 명령이면 guarded 한 번, 그 외면 check 한 번. 실행 수단이 무엇이든 `state/` 쓰기는 이 둘 중 하나다. **영속 셸에 보내는 명령은 판정까지 한 줄에 쓴다.** 영속 셸은 결과에 종료코드를 싣지 않는다. 다음 턴을 통째로 써서 `$?`를 읽으면 쓰기 하나가 4턴이 된다 — 2026-09-17 08:50 회차는 48호출 중 16(33%)이 종료코드 전용 턴이었다. `if bash bin/guarded.sh deploy-approve-intake "$TOKEN" run <명령…>; then print -r -- OK; else print -r -- FAIL; fi`처럼 **분기와 표식 출력을 같은 줄에** 넣는다. 전역 지침의 "`; echo $?`를 붙이지 마라"는 종료코드가 도구 결과에 그대로 실리는 단발 실행을 가리키며, 영속 셸에는 해당하지 않는다 — 여기서는 한 줄 안의 분기가 그 자리를 대신한다. 그 밖의 자리에서 `lock.sh check`를 부르지 않는다. 파일 생성·수정은 이 워크스페이스 안에서 한다. `/tmp` 등 워크스페이스 밖 경로에 스크립트나 파일을 만들지 않는다. **파일을 지우지 않는다** — `rm`은 승인 프롬프트를 띄우고 무인 회차에는 답할 사람이 없어 그 자리에서 멈춘다. 재사용하는 파일은 덮어쓴다. **`git worktree`를 만들지 않고 빌드·테스트·패키지 매니저 명령(`mvn`·`gradle`·`npm`·`pytest` 등)을 실행하지 않는다.** 판정은 정적 읽기로만 한다 — 작업 사본을 만들면 정리가 필요해지고 그 정리가 다시 승인 프롬프트를 부른다.
 
-Slack 접근은 codex Slack 플러그인 도구로만 하며 **도구 이름과 인자를 탐색하지 않는다** — `ALL_TOOLS` 필터로 찾으면 그 목록 전체가 컨텍스트에 남아 회차가 끝날 때까지 매 턴 다시 읽힌다. 아래 이름과 인자를 그대로 쓴다.
+Slack 접근은 claude.ai Slack 커넥터 도구로만 하며 **도구 이름과 인자를 탐색하지 않는다** — 키워드로 찾으면 그 목록 전체가 컨텍스트에 남아 회차가 끝날 때까지 매 턴 다시 읽힌다. 도구가 목록에 없으면 `ToolSearch("select:mcp__claude_ai_Slack__slack_read_channel,mcp__claude_ai_Slack__slack_read_thread,mcp__claude_ai_Slack__slack_send_message")`를 **한 번만** 부르고, 그 뒤로는 아래 이름과 인자를 그대로 쓴다.
 
-- 채널 읽기 `mcp__codex_apps__slack_slack_read_channel({channel_id, oldest, latest, limit, response_format:"detailed"})`
-- 스레드 읽기 `mcp__codex_apps__slack_slack_read_thread({channel_id, message_ts, oldest, limit, response_format:"detailed"})`
-- 반응 확인 `mcp__codex_apps__slack_slack_get_reactions({channel_id, message_ts})`
-- 답글·DM `mcp__codex_apps__slack_slack_send_message({channel_id, thread_ts, message})`
+- 채널 읽기 `mcp__claude_ai_Slack__slack_read_channel({channel_id, oldest, latest, limit, response_format:"detailed"})`
+- 스레드 읽기 `mcp__claude_ai_Slack__slack_read_thread({channel_id, message_ts, oldest, limit, response_format:"detailed"})`
+- 반응 확인 — 전용 도구가 없다. 위 두 읽기의 `response_format:"detailed"` 응답에 반응이 실리므로 그것으로 센다.
+- 답글·DM `mcp__claude_ai_Slack__slack_send_message({channel_id, thread_ts, message})`
 
 **인자 이름은 `channel_id`와 `message_ts`다.** `channel`·`ts`·`thread_id`로 부르면 필수 인자 누락으로 거부되고, 첫 Slack 수집 실패는 회차 중단 사유라 그 회차가 통째로 버려진다. 본문 필드는 `text`가 아니라 `message`다.
 
@@ -31,7 +31,7 @@ Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 �
 
 ### Jira 전이 형식
 
-Jira 도구도 **이름을 탐색하지 않는다** — 정규화된 이름을 그대로 호출한다. 조회는 `mcp__codex_apps__atlassian_rovo__legacy__atlassian_rovo_legacy_getjiraissue`, 원격 링크는 `mcp__codex_apps__atlassian_rovo__legacy__atlassian_rovo_legacy_getjiraissueremoteissuelinks`, 전이는 `mcp__codex_apps__atlassian_rovo__legacy__atlassian_rovo_legacy_transitionjiraissue`다.
+Jira 도구도 **이름을 탐색하지 않는다** — 목록에 없으면 `ToolSearch("select:mcp__claude_ai_Atlassian__getJiraIssue,mcp__claude_ai_Atlassian__getJiraIssueRemoteIssueLinks,mcp__claude_ai_Atlassian__transitionJiraIssue")`를 한 번만 부르고 아래 이름을 그대로 호출한다. 조회는 `mcp__claude_ai_Atlassian__getJiraIssue`, 원격 링크는 `mcp__claude_ai_Atlassian__getJiraIssueRemoteIssueLinks`, 전이는 `mcp__claude_ai_Atlassian__transitionJiraIssue`다.
 
 조회(cloudId은 ROUTINE-CONFIG, `fields=["status"]`, `expand=transitions`)로 현재 상태와 가능한 전이를 함께 얻는다. 전이 목록 전용 도구를 따로 부르지 않는다. `to.name`이 목표 상태와 일치(공백 제거 비교)하는 전이가 있을 때만 위 전이 도구로 전환한다.
 
@@ -60,7 +60,7 @@ Slack 읽기는 ROUTINE-CONFIG의 `#deploy-approval` 채널에서 `oldest`를 �
 
 활성 보류 집합은 `begin` JSON의 `worklist`다 — 폴드를 다시 하지 않는다. 봇이 이미 ✅를 달았거나 활성 worklist에 같은 `"<channel>/<messageTs>"` key가 있거나 멱등 마커 보류 답글이 있으면 신규 수집 경로에서 제외한다.
 
-각 대상 메시지를 순차 처리한다. PR은 메시지의 직접 URL이 있으면 `bash bin/az deploy-approve-intake repos pr show`로 확정하고, 없으면 Jira를 순서대로 본다 — **먼저** `mcp__codex_apps__atlassian_rovo__legacy__atlassian_rovo_legacy_getjiraissueremoteissuelinks({cloudId, issueIdOrKey})`, 그다음 `mcp__codex_apps__atlassian_rovo__legacy__atlassian_rovo_legacy_getjiraissue({cloudId, issueIdOrKey, fields:["summary","description","project","status","customfield_10000"], expand:"transitions"})`의 본문·개발 패널. **`fields`에 `comment`를 처음부터 넣지 않는다** — 댓글이 응답의 대부분이라 회당 2.8만 자였다(2026-09-16 실측). 둘에서 못 찾았을 때만 `comment`를 넣어 다시 조회한다. 찾은 URL은 같은 `repos pr show`로 확정한다. Jira에서 못 찾은 경우에만 프로젝트·레포를 좁혀 `bash bin/az deploy-approve-intake repos pr list --project <project> [--repository <repo>] --status all --top 50`으로 후보를 찾고 필요한 필드만 query한다. 조직 전체 목록이나 대형 JSON 덤프를 하지 않는다.
+각 대상 메시지를 순차 처리한다. PR은 메시지의 직접 URL이 있으면 `bash bin/az deploy-approve-intake repos pr show`로 확정하고, 없으면 Jira를 순서대로 본다 — **먼저** `mcp__claude_ai_Atlassian__getJiraIssueRemoteIssueLinks({cloudId, issueIdOrKey})`, 그다음 `mcp__claude_ai_Atlassian__getJiraIssue({cloudId, issueIdOrKey, fields:["summary","description","project","status","customfield_10000"], expand:"transitions"})`의 본문·개발 패널. **`fields`에 `comment`를 처음부터 넣지 않는다** — 댓글이 응답의 대부분이라 회당 2.8만 자였다(2026-09-16 실측). 둘에서 못 찾았을 때만 `comment`를 넣어 다시 조회한다. 찾은 URL은 같은 `repos pr show`로 확정한다. Jira에서 못 찾은 경우에만 프로젝트·레포를 좁혀 `bash bin/az deploy-approve-intake repos pr list --project <project> [--repository <repo>] --status all --top 50`으로 후보를 찾고 필요한 필드만 query한다. 조직 전체 목록이나 대형 JSON 덤프를 하지 않는다.
 
 PR을 특정했으면 **코드를 보기 전에 `python3 bin/prior-review.py <project> <repository> <pullRequestId>`를 실행한다.** 세 원장(`pr-review-summary.jsonl`·`reviewedPrs`·`review-findings.jsonl`)에서 그 PR 것만 걸러 `summary`·`reviewed`·`findings`로 돌려주므로 **원장 파일을 직접 읽지 않는다** — PR 하나 때문에 88KB와 52KB를 읽었다. `summary`가 그 PR의 가장 늦은 요약 줄이다. **그 줄의 `srcCommit`이 지금 PR의 `lastMergeSourceCommit.commitId`와 같을 때만** 재사용한다 — 다르면 리뷰 이후 새 커밋이 올라온 것이므로 그 줄을 쓰지 않고 직접 판정한다. 재사용할 때는 `prefixes`에 `issue:`나 `discuss:`가 있으면 `review-issue` 보류, 없으면 리뷰 측면 통과로 보고 **코드를 다시 읽지 않는다.** 줄이 없거나 commit이 다르면 이 PR을 직접 판정한다. `pr-review-resolve`가 재투표할 때 이 원장을 갱신하므로, 해소된 지적은 가장 늦은 줄에 남지 않는다.
 

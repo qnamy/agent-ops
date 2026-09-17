@@ -12,7 +12,7 @@ mk() {  # mk <name> <cron> <precheck-timeout|-|none>
     --name "$name" \
     --trigger "$cron" \
     --prompt "$R/prompts/$name.md 를 읽고 그 지시를 지금 그대로 수행하라." \
-    --provider codex \
+    --provider claude \
     --workspace "$WS" --workspace-mode existing \
     --timezone Asia/Seoul \
     --fresh-session --disabled
