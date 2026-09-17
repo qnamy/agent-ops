@@ -166,14 +166,20 @@ def render(label, buckets):
 def main(argv):
     since = moment(argv[1] if len(argv) > 1 else None, 0.0)
     until = moment(argv[2] if len(argv) > 2 else None, 2.0e10)
-    orchestrator, codex_worker, claude_worker = blank(), blank(), blank()
+    orchestrator, codex_worker = blank(), blank()
+    claude_worker, human = blank(), blank()
     scan_codex(since, until, orchestrator, codex_worker)
-    scan_claude(since, until, claude_worker)
+    scan_claude(since, until, claude_worker, human)
     start = datetime.datetime.fromtimestamp(since).strftime("%m-%d %H:%M") if since else "전체"
     end = datetime.datetime.fromtimestamp(until).strftime("%m-%d %H:%M") if until < 2.0e10 else "현재"
     render(
         f"{start} ~ {end}",
-        [("오케스트레이터", orchestrator), ("워커 codex", codex_worker), ("워커 claude", claude_worker)],
+        [
+            ("오케스트레이터", orchestrator),
+            ("워커 codex", codex_worker),
+            ("워커 claude", claude_worker),
+            ("사람 claude", human),
+        ],
     )
     return 0
 
