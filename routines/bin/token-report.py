@@ -15,9 +15,10 @@ usage: token-report.py [<시작> [<끝>]]
 이상 있는 세션 수이고, 구간을 걸친 세션은 구간 안 턴만 실린다.
 
 **어느 쪽도 루틴 전용이 아니다.** 같은 디렉터리에 사람이 띄운 관측·작업 세션이
-양쪽 다 섞인다. 워커는 `pr-session.sh`가 보낸 리뷰 지시를 받으므로 그 입력이
-`<프로젝트> 프로젝트의 <레포> 저장소 PR <번호>` 형태다. 대장
-(`state/pr-sessions/`)은 `close`·`sweep`에서 지워져 사후 식별에 못 쓴다.
+양쪽 다 섞인다. 워커는 `pr-session.sh ask`가 보낸 지시를 받으므로 그 본문에 치환된
+결과 경로(`review-result.…`)가 있다. 대장(`state/pr-sessions/`)은 `close`·`sweep`에서
+지워져 사후 식별에 못 쓴다. codex 쪽에는 워커 갈래가 없다 — `ensure`가 워커를
+`claude`로만 띄운다.
 
 캐시 입력은 정가의 1/10로 과금된다는 가정을 쓰지 않는다. 요금표를 확인하지
 않았으므로 입력합·정가·턴만 낸다.
@@ -35,15 +36,29 @@ CLAUDE = os.path.expanduser("~/.claude/projects/-Users-<user>-work-orca-automati
 # 섞인다 — `git worktree list`에 `~/orca/workspaces/orca-automations/window-start`가
 # 있고 그 경로에도 이 문자열이 들어 있다. 세 도구가 같은 기준을 쓴다.
 ROOT = "~/work/orca-automations"
-# `pr-session.sh ask`가 보내는 리뷰 지시의 첫 줄. 프롬프트의 `state/ask.*.md`
-# 서두가 바뀌면 여기도 같이 고쳐야 한다.
-WORKER_OPENER = re.compile(r"저장소 PR \d+")
-# 회차는 **시작 명령을 실제로 실행한** 세션이다. `round.py begin`이
-# `lock.sh acquire`를 서브프로세스로 감추므로(c11be27) 둘 다 본다. 세션 본문에
-# 문자열이 있는지로 가르면 프롬프트를 읽거나 이 저장소를 고치는 개발 세션이
-# 오케스트레이터로 잡힌다 — 2026-09-17 실측으로 `pr-review-intake`의 실제 RUN은
-# 8건인데 그 방식의 목록이 9건이었다.
-ROUND_CALL = re.compile(r"bin/(?:round\.py begin|lock\.sh acquire) ([a-z-]+)")
+# `ask`가 보내는 지시의 공통 표식이다. 본문 형태는 둘이고 서로 겹치는 문구가
+# 없다 — intake는 `<레포> 저장소 PR <번호>를 정적 검토하라`로 시작하고 resolve의
+# 해소 검증은 `# PR review comment resolution verification`으로 시작한다. 둘 다
+# `{{RESULT_PATH}}`를 하나씩 갖고 `ask`가 보내는 시점에 실제 결과 경로로 치환하므로
+# 그 경로가 양쪽에 반드시 실린다. 문구로 가르면 resolve 워커가 사람으로 잡힌다.
+WORKER_OPENER = re.compile(r"review-result\.")
+# 회차는 시작 명령을 **실행한** 세션이다. 도구호출 인자 전체를 보면 안 된다 —
+# 파일 쓰기도 같은 도구의 인자로 오므로, 그 명령줄이 본문에 든 패치를 적용한
+# 개발 세션이 회차가 된다(2026-09-10 12:22·12:27 두 세션이 그렇게 잡혔고 그날
+# 실제 RUN은 0건이다). 셸 명령만 꺼내 **명령 경계**에서 대조한다. `round.py begin`이
+# `lock.sh acquire`를 서브프로세스로 감추므로(c11be27) 둘 다 본다.
+SHELL_COMMAND = re.compile(r'cmd:\s*"((?:[^"\\]|\\.)*)"')
+ROUND_CALL = re.compile(
+    r"(?:^|[;&|]\s*)(?:(?:python3?|bash|sh)\s+)?bin/(?:round\.py begin|lock\.sh acquire)\s+([a-z-]+)"
+)
+
+
+def is_round_call(payload):
+    """이 도구호출이 회차 시작 명령을 **실행**했는가."""
+    if payload.get("type") not in ("function_call", "custom_tool_call"):
+        return False
+    arguments = str(payload.get("arguments") or payload.get("input") or "")
+    return any(ROUND_CALL.search(c) for c in SHELL_COMMAND.findall(arguments))
 
 
 def moment(raw, default):
@@ -76,28 +91,18 @@ def stamp_of(entry):
         return None
 
 
-def codex_user_text(payload):
-    if payload.get("type") != "message" or payload.get("role") != "user":
-        return None
-    content = payload.get("content")
-    if isinstance(content, list):
-        content = "".join(c.get("text", "") for c in content if isinstance(c, dict))
-    return content if isinstance(content, str) else None
+def scan_codex(since, until, orchestrator, human):
+    """codex 세션을 회차와 사람으로 가른다.
 
-
-def scan_codex(since, until, orchestrator, worker, human):
-    """codex 세션을 회차·워커·사람으로 가른다.
-
-    Claude 쪽과 같은 이유로 세 갈래다 — 같은 디렉터리에 사람이 띄운 개발·관측
-    세션이 섞인다. 회차는 시작 명령을 실행한 것, 워커는 `pr-session.sh`가 보낸
-    리뷰 지시를 사용자 입력으로 받은 것이고, 나머지가 사람이다. 순서가 곧
-    우선순위다 — 회차 세션도 지시 본문을 파일로 쓰므로 회차를 먼저 본다.
+    워커 갈래를 두지 않는다 — `bin/pr-session.sh`의 `ensure`가 워커를 `claude`
+    명령으로만 띄우므로 루틴이 만드는 codex 워커가 없다. 갈래를 남기면 PR 번호가
+    섞인 사람 세션만 거기 들어가 사람 비용이 워커로 계상된다.
     """
     for path in glob.glob(CODEX):
         if os.path.getmtime(path) < since:
             continue
         cwd = None
-        is_round = is_worker = False
+        is_round = False
         turns = cache = fresh = output = 0
         at = None
         for line in open(path):
@@ -110,12 +115,8 @@ def scan_codex(since, until, orchestrator, worker, human):
                 cwd = payload["cwd"]
             kind = payload.get("type")
             # 역할 식별은 구간 밖에서도 본다. 금액만 구간 안으로 자른다.
-            if not is_round and kind in ("function_call", "custom_tool_call"):
-                arguments = str(payload.get("arguments") or payload.get("input") or "")
-                is_round = bool(ROUND_CALL.search(arguments))
-            if not is_worker:
-                text = codex_user_text(payload)
-                is_worker = bool(text and WORKER_OPENER.search(text))
+            if not is_round:
+                is_round = is_round_call(payload)
             at = stamp_of(entry) or at
             # 누계(`total_token_usage`)가 아니라 턴별 증분을 쓴다. 둘의 관계는
             # 실측으로 확인했다 — 증분의 합이 누계와 같다.
@@ -133,8 +134,7 @@ def scan_codex(since, until, orchestrator, worker, human):
             output += last["output_tokens"]
         if cwd != ROOT or not turns:
             continue
-        bucket = orchestrator if is_round else (worker if is_worker else human)
-        add(bucket, turns, fresh + cache, cache, fresh, output)
+        add(orchestrator if is_round else human, turns, fresh + cache, cache, fresh, output)
 
 
 def first_user_text(entry):
@@ -200,9 +200,9 @@ def render(label, buckets):
 def main(argv):
     since = moment(argv[1] if len(argv) > 1 else None, 0.0)
     until = moment(argv[2] if len(argv) > 2 else None, 2.0e10)
-    orchestrator, codex_worker, codex_human = blank(), blank(), blank()
+    orchestrator, codex_human = blank(), blank()
     claude_worker, claude_human = blank(), blank()
-    scan_codex(since, until, orchestrator, codex_worker, codex_human)
+    scan_codex(since, until, orchestrator, codex_human)
     scan_claude(since, until, claude_worker, claude_human)
     start = datetime.datetime.fromtimestamp(since).strftime("%m-%d %H:%M") if since else "전체"
     end = datetime.datetime.fromtimestamp(until).strftime("%m-%d %H:%M") if until < 2.0e10 else "현재"
@@ -210,7 +210,6 @@ def main(argv):
         f"{start} ~ {end}",
         [
             ("오케스트레이터", orchestrator),
-            ("워커 codex", codex_worker),
             ("워커 claude", claude_worker),
             ("사람 codex", codex_human),
             ("사람 claude", claude_human),
