@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
@@ -24,7 +25,8 @@ ROOT = Path(os.environ.get("ROUTINE_STATE_ROOT") or BIN.parent / "state")
 # 정본은 precheck.py의 GATED_AUTOMATIONS와 각 프롬프트의 시작 절이다.
 TABLE = {
     "pr-review-intake":       dict(gated=True,  ado=True,  bot=False, worklist=None),
-    "pr-review-resolve":      dict(gated=True,  ado=True,  bot=False, worklist="pr-review-worklist.jsonl"),
+    "pr-review-resolve":      dict(gated=True,  ado=True,  bot=False, worklist="pr-review-worklist.jsonl",
+                                   concurrent="pr-review-intake"),
     "deploy-approve-intake":  dict(gated=True,  ado=True,  bot=True,  worklist="deploy-approve-worklist.jsonl"),
     "deploy-approve-resolve": dict(gated=False, ado=True,  bot=True,  worklist="deploy-approve-worklist.jsonl"),
     "pr-review-merged":       dict(gated=False, ado=True,  bot=False, worklist="pr-review-worklist.jsonl"),
@@ -34,6 +36,17 @@ TABLE = {
 
 def sh(*args, timeout=90):
     return subprocess.run([str(a) for a in args], capture_output=True, text=True, timeout=timeout, check=False)
+
+
+def lock_owner(automation):
+    """lock.sh가 owner 파일에 적어 둔 획득 epoch. 없거나 stale이면 None이다.
+    STALE은 lock.sh와 같은 값이어야 한다 — 거기서 좀비로 회수되는 락을 여기서
+    살아 있다고 읽으면 끝난 회차 때문에 PR이 계속 밀린다."""
+    try:
+        owner = int((ROOT / "locks" / f"{automation}.lock" / "owner").read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return owner if time.time() - owner <= 1800 else None
 
 
 def lock(verb, automation, token=None):
@@ -108,7 +121,32 @@ def collect(automation, token, live):
             out["worklist"] = json.loads(folded.stdout)
         except json.JSONDecodeError:
             raise Fail("fold-failed")
+        mark_concurrent(spec.get("concurrent"), out["worklist"])
     return out
+
+
+def mark_concurrent(other, worklist):
+    """지금 도는 다른 automation 회차가 등록한 항목에 `inFlight`를 단다.
+
+    intake는 09-16 고아 PR 사고 뒤 **리뷰 전에** worklist에 등록하고, resolve는
+    「내 text 스레드 0건 = 미리뷰」를 리뷰 실패 복구 신호로 쓴다. 리뷰가 도는
+    몇 분은 두 판정이 함께 성립하는 창이고, 락은 automation별이라 둘을
+    직렬화하지 않는다. 2026-09-17 11:01 intake와 11:10 resolve가 그 창에서
+    Lingo/tx-lingo-api#19116에 같은 지적을 두 벌 달았다(스레드 91421·91425,
+    91422·91426). 작성자가 네 스레드에 모두 답글을 썼다.
+
+    등록 ts가 그 회차의 시작 epoch 이상이면 그 회차가 올린 항목이다 — intake의
+    착수 등록은 ts에 runStartedEpoch를 그대로 쓰고, 리뷰 뒤 재등록은 그보다
+    늦다."""
+    if not other:
+        return
+    started = lock_owner(other)
+    if started is None:
+        return
+    for item in worklist:
+        ts = item.get("ts")
+        if isinstance(ts, int) and ts >= started:
+            item["inFlight"] = other
 
 
 def finish(automation, token, commit, sweep):
