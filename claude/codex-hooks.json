@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/bakgyunam/workspace/agent-ops/scripts/hook-routine-sync.py"
+            "command": "python3 ~/workspace/agent-ops/scripts/hook-routine-sync.py"
           }
         ]
       }
