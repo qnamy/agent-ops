@@ -99,31 +99,52 @@ def scan_codex(since, until, orchestrator, worker):
         add(orchestrator if is_orchestrator else worker, turns, fresh + cache, cache, fresh, output)
 
 
-def scan_claude(since, until, worker):
+def first_user_text(entry):
+    if entry.get("type") != "user":
+        return None
+    content = (entry.get("message") or {}).get("content")
+    if isinstance(content, list):
+        content = "".join(c.get("text", "") for c in content if isinstance(c, dict))
+    if not isinstance(content, str):
+        return None
+    content = content.strip()
+    # 도구 결과·시스템 주입은 사용자 입력이 아니다.
+    return content if content and not content.startswith("<") else None
+
+
+def scan_claude(since, until, worker, human):
     """Claude Code는 턴마다 usage를 남긴다. 세션 누계가 없으므로 합산한다.
 
     `cache_creation_input_tokens`는 캐시에 올리는 쓰기라 정가로 센다.
     """
     for path in glob.glob(CLAUDE):
-        changed = os.path.getmtime(path)
-        if not (since <= changed < until):
+        if os.path.getmtime(path) < since:
             continue
+        opener = None
         turns = fresh = cache = output = 0
         for line in open(path):
-            if '"usage"' not in line:
-                continue
             try:
-                usage = (json.loads(line).get("message") or {}).get("usage")
+                entry = json.loads(line)
             except Exception:
                 continue
+            if opener is None:
+                opener = first_user_text(entry)
+            if entry.get("type") != "assistant":
+                continue
+            at = stamp_of(line)
+            if at is None or not (since <= at < until):
+                continue
+            usage = (entry.get("message") or {}).get("usage")
             if not usage:
                 continue
             turns += 1
             fresh += usage.get("input_tokens", 0) + usage.get("cache_creation_input_tokens", 0)
             cache += usage.get("cache_read_input_tokens", 0)
             output += usage.get("output_tokens", 0)
-        if turns:
-            add(worker, turns, fresh + cache, cache, fresh, output)
+        if not turns:
+            continue
+        bucket = worker if opener and WORKER_OPENER.search(opener) else human
+        add(bucket, turns, fresh + cache, cache, fresh, output)
 
 
 def render(label, buckets):
