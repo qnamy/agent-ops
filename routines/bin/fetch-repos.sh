@@ -38,8 +38,11 @@ for t in $targets; do
   if git -C "$BASE/$r" fetch --quiet origin 2>/dev/null; then
     echo "fetched: $r"
   else
+    # origin이 실패해도 멈추지 않는다. PR 커밋을 실제로 공급하는 것은 아래
+    # 정본 URL fetch이고, 그것은 origin과 다른 인증 경로다 — 2026-09-18에
+    # origin URL이 쓰는 크리덴셜만 사라졌을 때 이 continue가 성공했을 정본
+    # fetch까지 막아 `#{PR}`이 iteration 2로 리뷰됐다.
     echo "fetch-failed: $r"
-    continue
   fi
   [ -n "$id" ] && [ -n "$url" ] || continue
   if git -C "$BASE/$r" fetch --quiet "$url" \
