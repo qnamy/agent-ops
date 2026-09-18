@@ -77,12 +77,12 @@ ensure)
     gone "$h" || echo "leaked-session: $h" >&2
     rm -f "$rf"
   fi
-  # 무인 회차에는 승인 프롬프트에 답할 사람이 없다(R-08). Claude Code의
+  # 무인 회차에는 승인 프롬프트에 답할 사람이 없다(R-08). Devin의
   # `dontAsk`는 프롬프트를 띄우는 대신 **거부**하므로 필요한 것만 연다 —
   # 레포 읽기용 git과 결과 JSON 쓰기다. codex의 workspace-write가 워크스페이스
   # 전체 쓰기를 허용했던 것보다 좁다. 레포 읽기는 `--add-dir`가 연다.
   out="$(orca terminal create --worktree "path:$WS" --title "review $key" \
-        --command "claude --permission-mode dontAsk --add-dir $HOME/work --allowedTools Write Read Glob Grep 'Bash(git --no-optional-locks:*)'" --json 2>/dev/null)"
+        --command "devin --permission-mode dontAsk --add-dir $HOME/work --allowedTools Write Read Glob Grep 'Bash(git --no-optional-locks:*)'" --json 2>/dev/null)"
   h="$(printf '%s' "$out" | python3 -c 'import json,sys
 try: d=json.load(sys.stdin)
 except Exception: print(""); raise SystemExit
@@ -112,7 +112,7 @@ ask)
   # 끝나는 것을 실패로 세면 안 된다 — 2026-09-16 PR 19108에서 워커가 36초 만에
   # 결과를 썼는데 ask는 `--wait-submit` 20초에 send-failed로 빠져나갔다.
   #
-  # **사고 D는 여기서 닫히지 않는다.** 2026-09-17 11:15~13:21 Claude 세션 한도로
+  # **사고 D는 여기서 닫히지 않는다.** 2026-09-17 11:15~13:21 Devin 세션 한도로
   # ask 17건이 즉시 거절됐고, 이 루프는 0초에 끝난 거절과 19분째 생각 중인 리뷰를
   # 구분하지 못해 거절마다 20분을 전액 지불했다. 그 대기는 공짜가 아니다 —
   # 오케스트레이터는 영속 셸을 1분에 한 턴씩 폴링으로 사고, 12:21 회차는 78호출 중
