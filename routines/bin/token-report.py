@@ -160,12 +160,12 @@ def first_user_text(entry):
     return content if content and not content.startswith("<") else None
 
 
-def scan_claude(since, until, worker, human):
-    """Claude Code는 턴마다 usage를 남긴다. 세션 누계가 없으므로 합산한다.
+def scan_devin(since, until, worker, human):
+    """Devin은 턴마다 usage를 남긴다. 세션 누계가 없으므로 합산한다.
 
     `cache_creation_input_tokens`는 캐시에 올리는 쓰기라 정가로 센다.
     """
-    for path in glob.glob(CLAUDE):
+    for path in glob.glob(DEVIN):
         if os.path.getmtime(path) < since:
             continue
         opener = None
@@ -211,18 +211,18 @@ def main(argv):
     since = moment(argv[1] if len(argv) > 1 else None, 0.0)
     until = moment(argv[2] if len(argv) > 2 else None, 2.0e10)
     orchestrator, codex_human = blank(), blank()
-    claude_worker, claude_human = blank(), blank()
+    devin_worker, devin_human = blank(), blank()
     scan_codex(since, until, orchestrator, codex_human)
-    scan_claude(since, until, claude_worker, claude_human)
+    scan_devin(since, until, devin_worker, devin_human)
     start = datetime.datetime.fromtimestamp(since).strftime("%m-%d %H:%M") if since else "전체"
     end = datetime.datetime.fromtimestamp(until).strftime("%m-%d %H:%M") if until < 2.0e10 else "현재"
     render(
         f"{start} ~ {end}",
         [
             ("오케스트레이터", orchestrator),
-            ("워커 claude", claude_worker),
+            ("워커 devin", devin_worker),
             ("사람 codex", codex_human),
-            ("사람 claude", claude_human),
+            ("사람 devin", devin_human),
         ],
     )
     return 0
