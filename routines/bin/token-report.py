@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # sanitized template — 실제 값은 로컬 ROUTINE-CONFIG에서 주입된다.
-"""루틴 세션의 토큰 사용량을 센다. codex와 Claude Code 양쪽을 본다.
+"""루틴 세션의 토큰 사용량을 센다. codex와 Devin 양쪽을 본다.
 
 usage: token-report.py [<시작> [<끝>]]
        시작·끝은 epoch 또는 'YYYY-MM-DD HH:MM'. 생략하면 전체·현재.
@@ -10,7 +10,7 @@ usage: token-report.py [<시작> [<끝>]]
 
 **구간은 양쪽 다 턴 단위로 가른다.** 세션 시작 시각이나 파일 mtime으로 가르면
 세션 재사용이 그대로 오차가 된다 — 2026-09-17 08:43에 15시간짜리 세션 하나가
-통째로 하루치로 잡혔다. codex는 `last_token_usage`(턴별 증분)를, Claude Code는
+통째로 하루치로 잡혔다. codex는 `last_token_usage`(턴별 증분)를, Devin은
 턴마다 남는 `usage`를 구간 안에서만 합산한다. `세션` 열은 구간 안에 턴이 하나
 이상 있는 세션 수이고, 구간을 걸친 세션은 구간 안 턴만 실린다.
 
@@ -18,7 +18,7 @@ usage: token-report.py [<시작> [<끝>]]
 양쪽 다 섞인다. 워커는 `pr-session.sh ask`가 보낸 지시를 받으므로 그 본문에 치환된
 결과 경로(`review-result.…`)가 있다. 대장(`state/pr-sessions/`)은 `close`·`sweep`에서
 지워져 사후 식별에 못 쓴다. codex 쪽에는 워커 갈래가 없다 — `ensure`가 워커를
-`claude`로만 띄운다.
+`devin`으로만 띄운다.
 
 캐시 입력은 정가의 1/10로 과금된다는 가정을 쓰지 않는다. 요금표를 확인하지
 않았으므로 입력합·정가·턴만 낸다.
@@ -31,7 +31,7 @@ import re
 import sys
 
 CODEX = os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")
-CLAUDE = os.path.expanduser("~/.claude/projects/-Users-<user>-work-orca-automations/*.jsonl")
+DEVIN = os.path.expanduser("~/.devin/projects/-Users-<user>-work-orca-automations/*.jsonl")
 # cwd는 정확히 대조한다. 부분 일치로 고르면 같은 레포의 다른 워크트리 세션이
 # 섞인다 — `git worktree list`에 `~/orca/workspaces/orca-automations/window-start`가
 # 있고 그 경로에도 이 문자열이 들어 있다. 세 도구가 같은 기준을 쓴다.
@@ -104,7 +104,7 @@ def stamp_of(entry):
 def scan_codex(since, until, orchestrator, human):
     """codex 세션을 회차와 사람으로 가른다.
 
-    워커 갈래를 두지 않는다 — `bin/pr-session.sh`의 `ensure`가 워커를 `claude`
+    워커 갈래를 두지 않는다 — `bin/pr-session.sh`의 `ensure`가 워커를 `devin`
     명령으로만 띄우므로 루틴이 만드는 codex 워커가 없다. 갈래를 남기면 PR 번호가
     섞인 사람 세션만 거기 들어가 사람 비용이 워커로 계상된다.
     """

@@ -1,7 +1,7 @@
 <!-- sanitized template — 실제 값은 로컬 ROUTINE-CONFIG에서 주입된다. 원본은 비공개 워크스페이스에서 운영 중. -->
 # deploy-approve-intake
 
-이 프롬프트 본문은 automation 트리거가 이미 줬다. **이 파일을 다시 읽지 않고, 자기 지시를 `rg`·`grep`으로 검색하지 않는다.** 재읽기 한 번과 자기 검색 한 번이 회차 도구 출력의 54%였다(2026-09-16 실측 7,659토큰). **개인 메모리(`~/.claude/`·`~/.codex/memories/`)도 읽지 않는다** — 2026-09-17 07:20 회차가 첫 턴에 그것을 `rg`로 28,337자 올려 11턴 내내 다시 실었다. 무인 회차의 판단은 이 프롬프트와 `ROUTINE-CONFIG.md`만으로 한다.
+이 프롬프트 본문은 automation 트리거가 이미 줬다. **이 파일을 다시 읽지 않고, 자기 지시를 `rg`·`grep`으로 검색하지 않는다.** 재읽기 한 번과 자기 검색 한 번이 회차 도구 출력의 54%였다(2026-09-16 실측 7,659토큰). **개인 메모리(`~/.devin/`·`~/.codex/memories/`)도 읽지 않는다** — 2026-09-17 07:20 회차가 첫 턴에 그것을 `rg`로 28,337자 올려 11턴 내내 다시 실었다. 무인 회차의 판단은 이 프롬프트와 `ROUTINE-CONFIG.md`만으로 한다.
 
 이 실행은 `#deploy-approval`의 새 배포 승인 요청을 수집해 PR을 판정하고, 통과한 요청에 봇 ✅를 달며, 보류 요청만 `state/deploy-approve-worklist.jsonl`에 등록한다. `~/work/ROUTINE-CONFIG.md`를 필요 시 읽어 채널, 사용자, ADO 조직, Jira 좌표와 멱등 마커를 얻는다. 회사 좌표·GUID·크리덴셜을 하드코딩하거나 출력·기록하지 않는다. `~/work/.legacy-routine-state/`와 `~/work/legacy-routines/`는 읽지도 쓰지도 않는다 — 이 워크스페이스의 `state/`만 상태로 쓴다.
 

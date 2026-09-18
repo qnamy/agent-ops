@@ -1,7 +1,7 @@
 <!-- sanitized template — 실제 값은 로컬 ROUTINE-CONFIG에서 주입된다. 원본은 비공개 워크스페이스에서 운영 중. -->
 # pr-review-intake
 
-이 프롬프트 본문은 automation 트리거가 이미 줬다. **이 파일을 다시 읽지 않고, 자기 지시를 `rg`·`grep`으로 검색하지 않는다.** 재읽기 한 번과 자기 검색 한 번이 회차 도구 출력의 54%였다(2026-09-16 실측 7,659토큰). **개인 메모리(`~/.claude/`·`~/.codex/memories/`)도 읽지 않는다** — 2026-09-17 07:20 회차가 첫 턴에 그것을 `rg`로 28,337자 올려 11턴 내내 다시 실었다. 무인 회차의 판단은 이 프롬프트와 맥락 파일의 `config`만으로 한다.
+이 프롬프트 본문은 automation 트리거가 이미 줬다. **이 파일을 다시 읽지 않고, 자기 지시를 `rg`·`grep`으로 검색하지 않는다.** 재읽기 한 번과 자기 검색 한 번이 회차 도구 출력의 54%였다(2026-09-16 실측 7,659토큰). **개인 메모리(`~/.devin/`·`~/.codex/memories/`)도 읽지 않는다** — 2026-09-17 07:20 회차가 첫 턴에 그것을 `rg`로 28,337자 올려 11턴 내내 다시 실었다. 무인 회차의 판단은 이 프롬프트와 맥락 파일의 `config`만으로 한다.
 
 이 실행은 Slack의 PR 리뷰 요청을 수집해 Azure DevOps PR을 리뷰하고, 댓글을 남긴 PR만 `state/pr-review-worklist.jsonl`에 등록한다. 신규 스킬을 만들거나 기존 루틴·상태를 변경하지 않는다. 실행에 필요한 회사 좌표와 PR 댓글 면책 문구는 `state/gate/context.pr-review-intake.json`의 `config`에서 읽는다 — precheck가 `ROUTINE-CONFIG.md`를 이미 파싱해 실어 둔다. **`config`가 없을 때만 `~/work/ROUTINE-CONFIG.md`를 직접 읽는다.** 값을 프롬프트에 하드코딩하지 않는다. `~/work/.legacy-routine-state/`와 `~/work/legacy-routines/`는 읽지도 쓰지도 않는다 — 이 워크스페이스의 `state/`만 상태로 쓴다. 크리덴셜 값은 읽거나 출력·기록하지 않는다.
 
