@@ -208,7 +208,21 @@ def slack_api(token: str, method: str, params: dict) -> dict:
     return payload
 
 
-def slack_channel_signal(token: str, channel: str, oldest: str | None = None) -> tuple[str, set[str]]:
+def slack_latest_ts(token: str, channel: str) -> str:
+    """창과 무관한 채널 전체의 최신 ts — intake 게이트 신호이자 commit 재계산 입력."""
+    head = slack_api(token, "conversations.history", {"channel": channel, "limit": 1})
+    head_messages = head.get("messages", [])
+    if not head_messages:
+        return "no-messages"
+    latest = head_messages[0].get("ts")
+    if latest is None:
+        raise RuntimeError("Slack latest message has no ts")
+    return str(latest)
+
+
+def slack_channel_signal(
+    token: str, channel: str, oldest: str | None = None, committed: str | None = None
+) -> tuple[str, dict]:
     """게이트 신호와 fetch 대상을 각각 다른 조회로 얻는다.
 
     신호는 **창과 무관하게 채널 전체의 최신 ts**다. 창을 씌우면 96시간 동안
@@ -216,17 +230,23 @@ def slack_channel_signal(token: str, channel: str, oldest: str | None = None) ->
     ts와 달라 매 회차 RUN한다(토큰 절감이 무너진다).
 
     fetch 대상은 세션이 처리할 창을 cursor가 소진될 때까지 읽는다. 한 페이지만
-    읽거나 페이지 수를 고정하면 뒤 페이지 PR의 레포가 fetch되지 않는다.
-    """
-    head = slack_api(token, "conversations.history", {"channel": channel, "limit": 1})
-    head_messages = head.get("messages", [])
-    if not head_messages:
-        return "no-messages", set()
-    latest = head_messages[0].get("ts")
-    if latest is None:
-        raise RuntimeError("Slack latest message has no ts")
+    읽거나 페이지 수를 고정하면 뒤 페이지 PR의 레포가 fetch되지 않는다. 대상마다
+    그 PR을 언급한 가장 이른 메시지의 ts를 함께 담아 돌려준다 — 예산이 모자라
+    넘긴 PR의 경계를 commit이 그 ts로 계산한다.
 
-    repositories: set[str] = set()
+    **committed ts 이하의 메시지는 대상에서 뺀다.** committed는 그 채널의 처리
+    완료 경계이고, 예산이 모자라 넘긴 PR이 있으면 commit이 그 경계를 이미
+    낮춰 둔다. 창은 `lastRunTs - 600`이라 한 건이라도 미처리로 mark가 멈추면
+    같은 메시지들이 매 회차 다시 대상이 되어 `pr show` 예산을 먹고 새 PR을
+    뒤로 민다(라이브락). cap된 회차에는 넘긴 메시지만 남아 큐가 회차마다 준다.
+    """
+    latest = slack_latest_ts(token, channel)
+    if latest == "no-messages":
+        return "no-messages", {}
+
+    # ts는 자릿수가 고정된 epoch 문자열이라 사전순 비교가 수치 비교와 같다.
+    floor = committed if isinstance(committed, str) and committed != "no-messages" else None
+    targets: dict[str, str] = {}
     cursor = None
     pages = 0
     while True:
@@ -238,8 +258,13 @@ def slack_channel_signal(token: str, channel: str, oldest: str | None = None) ->
         payload = slack_api(token, "conversations.history", params)
         for message in payload.get("messages", []):
             if isinstance(message, dict):
+                # conversations.history는 최신 메시지부터 준다 — 뒤에 오는 언급이
+                # 더 이르므로 덮어쓰면 대상마다 가장 이른 ts가 남는다.
+                message_ts = str(message.get("ts") or "")
+                if floor and message_ts and message_ts <= floor:
+                    continue
                 for org, project, repository, pull_request_id in PR_URL.findall(message.get("text", "")):
-                    repositories.add(fetch_target(org, project, repository, pull_request_id))
+                    targets[fetch_target(org, project, repository, pull_request_id)] = message_ts
         cursor = (payload.get("response_metadata") or {}).get("next_cursor")
         pages += 1
         if not cursor:
@@ -247,7 +272,7 @@ def slack_channel_signal(token: str, channel: str, oldest: str | None = None) ->
         if pages >= 200:
             # 조용히 자르지 않는다 — 자르면 뒤 페이지 레포가 영구히 fetch되지 않는다.
             raise RuntimeError("Slack history pagination did not terminate")
-    return str(latest), repositories
+    return latest, targets
 
 
 def slack_thread_signal(token: str, channel: str, message_ts: str, oldest: str) -> str:
@@ -293,7 +318,19 @@ def az_json(automation: str, args: list[str], timeout: int = 90):
 PR_CONTEXT: dict = {}
 
 
-def azdo_digest(worklist: list[dict], org: str, me: str) -> str:
+def is_routine_comment(comment: dict, me: str, disclaimer: str) -> bool:
+    """봇 계정이 쓰고 서명 두 줄로 끝나는 댓글 — 어느 automation이 썼든 봇 쓰기다.
+
+    같은 계정이라도 서명이 없는 댓글(사람의 UI 댓글·다른 용도의 세션)은 외부
+    신호로 세야 한다."""
+    return (
+        comment.get("commentType") == "text"
+        and ((comment.get("author") or {}).get("uniqueName")) == me
+        and (comment.get("content") or "").rstrip().endswith(disclaimer)
+    )
+
+
+def azdo_structure(worklist: list[dict], org: str, me: str, disclaimer: str) -> dict:
     """세션이 실제로 처리하는 신호만 담는다.
 
     이전에는 PR의 모든 스레드를 넣어서, 남이 만든 스레드 하나가 바뀌어도 회차가
@@ -303,6 +340,14 @@ def azdo_digest(worklist: list[dict], org: str, me: str) -> str:
     루트만으로 좁히면 남의 스레드에 단 내 답글이 해소돼도 게이트가 RUN을 내지
     않아 재투표가 열리지 않는다. `commentType: system` 스레드는 제외한다 — 내
     투표가 시스템 스레드를 만들어 digest를 흔들면 매 회차 RUN이 된다.
+
+    스레드 항목은 `[id, status, [[비루틴 댓글 id, lastContentUpdatedDate], ...]]`다.
+    루틴 댓글(`is_routine_comment`)은 신호에서 뺀다 — 자기 쓰기가 digest를
+    흔들지 않아야 종료 커밋이 snapshot 재생으로 끝난다(자기유발과 삼키기를
+    동시에 닫는다). 포함 판정은 disclaimer와 무관하게 내 댓글 존재로 한다 —
+    `by Claude Code`로 끝나는 예전 루틴 댓글만 있는 스레드도 계속 추적한다.
+    `lastUpdatedDate`는 봇 댓글로도 갱신돼 키에서 뺐고, status는 사람의 조용한
+    변경을 잡기 위해 남긴다 — 자기 PATCH는 commit의 재생으로 상쇄한다.
 
     경로 B의 source 푸시는 아래 `srcCommit`이 잡는다.
     """
@@ -349,8 +394,13 @@ def azdo_digest(worklist: list[dict], org: str, me: str) -> str:
             [
                 thread.get("id"),
                 thread.get("status"),
-                thread.get("lastUpdatedDate"),
-                ((thread.get("comments") or [{}])[-1].get("author") or {}).get("uniqueName"),
+                [
+                    [comment.get("id"), comment.get("lastContentUpdatedDate")]
+                    for comment in (thread.get("comments") or [])
+                    if comment.get("commentType") == "text"
+                    and not comment.get("isDeleted")
+                    and not is_routine_comment(comment, me, disclaimer)
+                ],
             ]
             for thread in threads.get("value", [])
             if not thread.get("isDeleted")
@@ -376,6 +426,10 @@ def azdo_digest(worklist: list[dict], org: str, me: str) -> str:
         {key: {k: v for k, v in value.items() if k != "threads"}
          for key, value in structure["prs"].items()}
     )
+    return structure
+
+
+def structure_digest(structure: dict) -> str:
     encoded = json.dumps(structure, sort_keys=True, default=str).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -504,6 +558,15 @@ def write_context(automation: str, fetch_output: str, prs: dict | None = None) -
         # reviewedPrs는 싣지 않는다 — 세션이 필요한 것은 lastRunTs 하나다. 500건
         # 목록은 bin/prior-review.py가 PR 키로 걸러 준다.
         payload["marks"] = {"lastRunTs": marks["lastRunTs"]}
+    # 수집의 committed 하한을 세션에도 넘긴다. precheck는 `slack_channel_signal`에서
+    # 이 ts 이하의 메시지를 대상에서 빼는데, 세션의 창(`lastRunTs - 600`)만 쓰면 그
+    # 사이에 걸린 메시지가 맥락 없는 `미처리`로 떨어져 commit이 영구히 막힌다 —
+    # 지적 0건으로 끝난 PR은 루트 댓글도 맥락 항목도 없어 어느 멱등 가드도 못 잡는다.
+    committed = load_json(committed_path(automation), {})
+    signals = committed.get("slack_ts") if isinstance(committed, dict) else None
+    floors = [v for v in (signals or {}).values() if isinstance(v, str) and v != "no-messages"]
+    if floors:
+        payload["slackFloor"] = max(floors)
     try:
         payload["config"] = config_context()
     except Exception as error:
@@ -522,14 +585,22 @@ def lock_held(automation: str) -> bool:
     세션 기동 자체를 막는다. 설계 DEC-006이 금지한 것은 precheck가 락을 **쓰는**
     것이고, 소유권은 여전히 세션의 `acquire`만 정한다.
 
-    staleness 판정은 `lock.sh`와 같은 30분이다. 좀비 락이 회차를 영구히 막지
-    않는다.
+    staleness 판정은 `lock.sh`와 같은 30분이고, 나이도 같은 값으로 읽는다 —
+    owner 파일의 획득 epoch과 `heartbeat` mtime 중 **최신**이다. 획득 epoch만
+    보면 30분을 넘겨 살아 있는 회차(그 세션의 `lock.sh check`가 heartbeat를
+    갱신한다)를 좀비로 읽어, 락이 잡힌 automation의 세션을 띄운다 — 그 세션은
+    `acquire` 실패로 첫 스텝에서 죽으면서 기동 비용만 낸다. heartbeat가 없는
+    구형식 락은 owner만 본다.
     """
-    owner = STATE_ROOT / "locks" / f"{automation}.lock" / "owner"
+    lock = STATE_ROOT / "locks" / f"{automation}.lock"
     try:
-        acquired = int(owner.read_text().strip())
+        acquired = int((lock / "owner").read_text().strip())
     except (FileNotFoundError, ValueError, OSError):
         return False
+    try:
+        acquired = max(acquired, int((lock / "heartbeat").stat().st_mtime))
+    except OSError:
+        pass
     return time.time() - acquired <= 1800
 
 
@@ -566,21 +637,22 @@ def intake_window_oldest(automation: str) -> str:
 def intake_gate(automation: str, channel_name: str) -> tuple[bool, str, set[str]]:
     config = read_config()
     channel = config_channel(config, channel_name)
-    signal, repositories = slack_channel_signal(
-        bot_token(), channel, intake_window_oldest(automation)
+    committed = stored_slack(automation, channel)
+    signal, targets = slack_channel_signal(
+        bot_token(), channel, intake_window_oldest(automation), committed
     )
     save_json(pending_path(automation), pending_slack(channel, signal))
-    if signal != stored_slack(automation, channel):
+    if signal != committed:
         # 계약: 루틴 실행 전에 PR별 상태를 API로 확인해 세션에 전달한다(R-06).
         # 세션이 기동 후 `repos pr show`를 다시 부르지 않게 하고, 착수 투표 전에
         # completed/abandoned를 구분할 수 있게 한다.
         PR_CONTEXT.clear()
-        PR_CONTEXT.update(intake_pr_context(automation, repositories))
-        return True, "new-channel-activity", repositories
+        PR_CONTEXT.update(intake_pr_context(automation, targets))
+        return True, "new-channel-activity", set(targets)
     return False, "ts-unchanged", set()
 
 
-def intake_pr_context(automation: str, targets: set[str]) -> dict:
+def intake_pr_context(automation: str, targets: dict) -> dict:
     """Slack에서 뽑은 fetch 대상마다 PR 상태를 조회해 **전부** 항목을 남긴다.
 
     조회에 실패한 PR도 `error`를 달아 넣는다. 항목을 빼면 세션이 같은 상태 API를
@@ -589,12 +661,14 @@ def intake_pr_context(automation: str, targets: set[str]) -> dict:
 
     조회는 직렬이고 `az_json`의 개별 상한이 90초인데 precheck 전체 예산은
     180초다. 두 건이 연달아 늦으면 fetch와 맥락 저장에 도달하지 못한다(R-13).
-    남은 예산을 보며 넘기고, 넘긴 PR도 `error`로 남긴다.
+    남은 예산을 보며 넘기고, 넘긴 PR도 `error`로 남긴다. 처리는 **메시지가
+    이른 순**이다 — 예산이 모자라면 최신 것부터 넘어가고, commit이 넘어간 것들의
+    경계 앞에서 committed ts를 끊어 다음 회차가 나머지를 이어받는다.
     """
     org = config_ado_org(read_config())
     deadline = time.monotonic() + 90
     context: dict = {}
-    for target in sorted(targets):
+    for target in sorted(targets, key=lambda value: (targets[value], value)):
         repository, _, rest = target.partition("#")
         pull_request_id, _, url = rest.partition("#")
         if not pull_request_id.isdigit() or not url:
@@ -605,35 +679,61 @@ def intake_pr_context(automation: str, targets: set[str]) -> dict:
         project = urllib.parse.unquote(match.group(1))
         repository = urllib.parse.unquote(repository)
         key = "%s/%s#%s" % (project, repository, pull_request_id)
-        remaining = int(deadline - time.monotonic())
-        if remaining <= 5:
-            context[key] = {"error": "precheck-budget"}
-            continue
-        try:
-            # 개별 상한을 **남은 전체 예산**으로 묶는다. 고정 90초를 쓰면 두 건이
-            # 연달아 늦을 때 함수가 180초를 쓰고 fetch·맥락 저장에 도달하지
-            # 못한다(R-13).
-            pull_request = az_json(
-                automation,
-                ["repos", "pr", "show", "--id", pull_request_id, "--org", org],
-                timeout=remaining,
-            )
-        except Exception:
-            context[key] = {"error": "status-unavailable"}
-            continue
-        if not isinstance(pull_request, dict) or not pull_request:
-            context[key] = {"error": "status-unavailable"}
-            continue
-        context[key] = {
-            "status": pull_request.get("status"),
-            "srcCommit": (pull_request.get("lastMergeSourceCommit") or {}).get("commitId"),
-            "tgtCommit": (pull_request.get("lastMergeTargetCommit") or {}).get("commitId"),
-            "createdById": (pull_request.get("createdBy") or {}).get("id"),
-        }
+        # ts는 이 PR을 언급한 가장 이른 Slack 메시지다. commit이 넘어간 PR의
+        # 경계를 이 값으로 계산한다.
+        record = {"ts": targets[target]}
+        context[key] = record
+        fill_pr_record(automation, org, record, pull_request_id, deadline)
     return context
 
 
+def fill_pr_record(automation: str, org: str, record: dict, pull_request_id: str, deadline: float) -> None:
+    """record에 PR 상태 필드를 채운다. 예산이 없거나 조회가 실패하면 `error`만 남긴다.
+
+    개별 상한을 **남은 전체 예산**으로 묶는다. 고정 90초를 쓰면 두 건이 연달아
+    늦을 때 함수가 180초를 쓰고 fetch·맥락 저장에 도달하지 못한다(R-13)."""
+    remaining = int(deadline - time.monotonic())
+    if remaining <= 5:
+        record["error"] = "precheck-budget"
+        return
+    try:
+        pull_request = az_json(
+            automation,
+            ["repos", "pr", "show", "--id", pull_request_id, "--org", org],
+            timeout=remaining,
+        )
+    except Exception:
+        record["error"] = "status-unavailable"
+        return
+    if not isinstance(pull_request, dict) or not pull_request:
+        record["error"] = "status-unavailable"
+        return
+    record.update({
+        "status": pull_request.get("status"),
+        "srcCommit": (pull_request.get("lastMergeSourceCommit") or {}).get("commitId"),
+        "tgtCommit": (pull_request.get("lastMergeTargetCommit") or {}).get("commitId"),
+        "createdById": (pull_request.get("createdBy") or {}).get("id"),
+    })
+
+
+def resolve_pending(worklist: list[dict], as_of: float) -> dict:
+    """pr-review-resolve 게이트가 pending에 쓰는 값. `structure`·`asOf`를 실어
+    두면 round.py가 pending을 snapshot으로 통째 복사해 commit의 재생 입력이 된다."""
+    if not worklist:
+        return {"azdo_digest": None}
+    config = read_config()
+    structure = azdo_structure(
+        worklist, config_ado_org(config), config_user(config), config_disclaimer(config)
+    )
+    return {
+        "azdo_digest": structure_digest(structure),
+        "structure": structure,
+        "asOf": as_of,
+    }
+
+
 def pr_review_resolve_gate() -> tuple[bool, str, set[str]]:
+    as_of = time.time()
     worklist = folded_worklist("pr-review-worklist.jsonl")
     org = ado_org_name(read_config())
     repositories = repository_names(worklist, org)
@@ -642,16 +742,99 @@ def pr_review_resolve_gate() -> tuple[bool, str, set[str]]:
         return False, "worklist-empty", repositories
 
     try:
-        config = read_config()
-        digest = azdo_digest(worklist, config_ado_org(config), config_user(config))
+        pending = resolve_pending(worklist, as_of)
     except Exception:
         save_json(pending_path("pr-review-resolve"), {"azdo_digest": None})
         return True, "digest-unavailable", repositories
-    save_json(pending_path("pr-review-resolve"), {"azdo_digest": digest})
+    save_json(pending_path("pr-review-resolve"), pending)
     committed = load_json(committed_path("pr-review-resolve"), {})
-    if digest != committed.get("azdo_digest"):
+    if pending["azdo_digest"] != committed.get("azdo_digest"):
         return True, "digest-changed", repositories
     return False, "digest-unchanged", repositories
+
+
+def _resolve_own_lines(name: str, as_of: float):
+    """이번 회차의 원장 줄만 돌려준다 — `by`와 `ts > asOf`로 귀속한다.
+
+    파일 읽기·JSON 파싱 실패는 그대로 올라간다 — commit이 `azdo_digest: null`로
+    무효화해 다음 precheck가 RUN을 낸다. `by`가 다르거나 `ts`가 없는 계약 이전
+    줄은 이번 회차의 것이 아니므로 건너뛴다."""
+    for raw in (STATE_ROOT / name).read_text().splitlines():
+        line = json.loads(raw)
+        if line.get("by") != "pr-review-resolve":
+            continue
+        ts = line.get("ts")
+        if not isinstance(ts, (int, float)) or ts <= as_of:
+            continue
+        yield line
+
+
+def _pr_key(line: dict) -> str:
+    return "%s/%s#%s" % (line["project"], line["repository"], line["pullRequestId"])
+
+
+def _replay_target(prs: dict, key: str):
+    entry = prs.get(key)
+    if not isinstance(entry, dict) or not isinstance(entry.get("threads"), list):
+        raise ValueError(f"replay target missing: {key}")
+    return entry["threads"]
+
+
+def resolve_committed(snapshot: dict) -> dict:
+    """snapshot 구조에 이 회차 자신의 op만 재생해 committed를 만든다.
+
+    종료 시점 라이브 재계산은 회차 중 도착한 외부 변화까지 committed에 실어
+    삼켰다(2026-10-12 `Ais#{PR}` — 답글이 회차 조회 40초 뒤에 도착했는데
+    commit에 포함돼 이후 precheck가 영구히 `digest-unchanged`가 됐다). 재생은
+    회차가 소비한 상태에 자기가 만든 상태만 얹으므로, 회차 중의 외부 변화는
+    committed와 pending의 차이로 남아 다음 회차를 발화시킨다.
+
+    재생 대상으로 식별된 줄을 적용할 수 없으면 실패다 — 건너뛰고 정상 해시를
+    쓰면 자기 쓰기가 빠진 채 값이 수렴해 외부 변화를 삼킨다."""
+    structure = snapshot.get("structure")
+    if not isinstance(structure, dict):
+        return snapshot  # 전환기 구형 — 해시 입력이 달라 1회 RUN 뒤 수렴한다.
+    as_of = snapshot["asOf"]
+    prs = structure["prs"]
+
+    # 복구가 만든 새 루트 스레드를 먼저 넣는다 — 아래 status 재생이 이 스레드를
+    # 참조할 수 있고, close가 마지막에 적용돼도 덮이지 않는다.
+    for line in _resolve_own_lines("review-findings.jsonl", as_of):
+        if "threadId" not in line:
+            continue  # 스레드를 만들지 않은 줄은 재생 대상이 아니다.
+        threads = _replay_target(prs, _pr_key(line))
+        thread_id = int(line["threadId"])
+        if not any(entry[0] == thread_id for entry in threads):
+            threads.append([thread_id, "active", []])
+            threads.sort()
+
+    for line in _resolve_own_lines("code-quality-list.jsonl", as_of):
+        if "threadStatus" not in line:
+            continue  # PATCH하지 않은 줄(타인 루트 해소 등)은 재생하지 않는다.
+        # 대상은 occId에서 온다 — 별도 좌표 필드가 올바르게 적혀 있어도 깨진
+        # occId는 그 줄의 귀속을 증명하지 못하므로 재생 실패다.
+        key, thread_text = line["occId"].rsplit("/", 1)
+        thread_id = int(thread_text)
+        threads = _replay_target(prs, key)
+        target = next((entry for entry in threads if entry[0] == thread_id), None)
+        if target is None:
+            raise ValueError(f"replay target thread missing: {key}/{thread_id}")
+        target[1] = line["threadStatus"]
+
+    for line in _resolve_own_lines("pr-review-worklist.jsonl", as_of):
+        if line.get("op") != "close":
+            continue  # resolve는 add를 쓰지 않는다 — 재생하지 않은 자기 op는
+            # committed에 옛 상태로 남아 과발화하는 안전 방향이다.
+        key = line["key"]
+        if key not in prs:
+            raise ValueError(f"replay target missing: {key}")
+        del prs[key]
+        structure["worklist"] = [
+            item for item in structure["worklist"]
+            if "%s/%s#%s" % (item[0], item[1], item[2]) != key
+        ]
+
+    return {"azdo_digest": structure_digest(structure)}
 
 
 def parse_held_at(value) -> datetime:
@@ -731,20 +914,91 @@ def decide(automation: str) -> tuple[bool, str, set[str]]:
     return pr_review_merged_gate()
 
 
+def slack_ts_before(value: str) -> str:
+    """Slack ts 한 눈금(마이크로초) 이전 값. ts의 자릿수가 곧 해상도다."""
+    seconds, _, fraction = value.partition(".")
+    micro = int(seconds) * 1000000 + int(fraction.ljust(6, "0")[:6]) - 1
+    return "%d.%06d" % divmod(micro, 1000000)
+
+
+def cap_committed_slack(automation: str, payload: dict) -> dict:
+    """예산 부족으로 넘긴 PR이 있으면 committed ts를 가장 이른 그 메시지 직전까지
+    낮춘다.
+
+    넘긴 PR까지 포함한 ts를 커밋하면 그 메시지는 다음 메시지가 올 때까지 다시
+    수집되지 않고, 그 사이 `lastRunTs`만 앞서가 수집 창이 넓어져 예산 초과가
+    재발한다(래칫). 경계를 낮추면 다음 tick이 `new-channel-activity`로 떠서
+    나머지를 이어받는다. ts는 자릿수가 고정된 epoch 문자열이라 사전순 비교가
+    수치 비교와 같다."""
+    context = load_json(GATE_DIR / f"context.{automation}.json", {})
+    prs = context.get("prs") if isinstance(context, dict) else None
+    deferred = [
+        str(value["ts"])
+        for value in (prs or {}).values()
+        if isinstance(value, dict) and value.get("error") == "precheck-budget" and value.get("ts")
+    ]
+    signals = payload.get("slack_ts") if isinstance(payload, dict) else None
+    if not (deferred and isinstance(signals, dict)):
+        return payload
+    limit = slack_ts_before(min(deferred))
+    for channel, signal in signals.items():
+        if signal != "no-messages" and signal > limit:
+            signals[channel] = limit
+    return payload
+
+
 def commit(automation: str) -> int:
+    """intake 둘은 회차 시작 시점 snapshot을 옮긴다(`pr-review-intake`는 예산이
+    모자라 넘긴 PR의 경계까지 낮춘 값). 그 둘의 신호는 채널 전체 최신 ts인데
+    회차의 쓰기는 스레드 답글이라 그 ts를 올리지 않아 자기유발이 성립하지 않고,
+    종료 시점 재계산은 회차 중 도착해 수집되지 않은 메시지까지 committed에 실어
+    다음 tick을 `ts-unchanged`로 재우는 손실 창만 만든다.
+
+    `pr-review-resolve`는 종료 시점 재계산 대신 snapshot 구조에 이 회차 자신의
+    op를 재생한 값을 committed로 쓴다(`resolve_committed`). 재생이 실패하면
+    `azdo_digest: null`을 커밋해 다음 precheck가 RUN을 내게 한다 — 아예
+    커밋하지 않으면 미처리 재시도 트리거(미커밋 재발화)와 구별되지 않는다."""
     if automation not in GATED_AUTOMATIONS:
         return 0
     snapshot = GATE_DIR / f"snapshot.{automation}.json"
     if not snapshot.exists():
         return 0
-    save_json(committed_path(automation), load_json_strict(snapshot))
+    if automation == "pr-review-resolve":
+        try:
+            payload = resolve_committed(load_json_strict(snapshot))
+        except Exception as error:
+            log(f"gate replay failed, committing null digest: {type(error).__name__}")
+            save_json(committed_path(automation), {"azdo_digest": None})
+            return 1
+    elif automation == "pr-review-intake":
+        # cap은 이 automation에만 건다. `deploy-approve-intake`는 `context.prs`를
+        # 쓰지 않고 프롬프트에 예산 규칙도 없어, 정상 성공 회차의 committed ts만
+        # 낮춰 다음 tick을 헛발화시킨다.
+        try:
+            payload = cap_committed_slack(automation, load_json_strict(snapshot))
+        except Exception as error:
+            # 예외를 그대로 내보내면 main의 catch-all이 0을 돌려주고 round.py가
+            # `commit: done`으로 적는다 — 커밋이 안 됐는데 됐다고 보고된다.
+            # 재계산 갈래와 같이 snapshot을 옮긴다.
+            log(f"budget cap failed, committing snapshot: {type(error).__name__}")
+            payload = load_json_strict(snapshot)
+    else:
+        payload = load_json_strict(snapshot)
+    save_json(committed_path(automation), payload)
     return 0
 
 
 def main(arguments: list[str]) -> int:
-    try:
-        if len(arguments) == 2 and arguments[0] == "commit":
+    if len(arguments) == 2 and arguments[0] == "commit":
+        # commit 실패는 fail open이 아니다. 아래 catch-all에 맡기면 0이 나가고
+        # round.py가 그것을 `commit: done`으로 적는다 — 커밋되지 않은 회차가
+        # 완료로 보고되고, 미커밋 재발화라는 재시도 경로도 함께 사라진다.
+        try:
             return commit(arguments[1])
+        except Exception as error:
+            log(f"gate commit failed: {type(error).__name__}")
+            return 1
+    try:
         if len(arguments) != 1:
             raise ValueError("usage: precheck.py <automation> | commit <automation>")
         automation = arguments[0]

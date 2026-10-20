@@ -1,24 +1,42 @@
 <!-- sanitized template — 실제 값은 로컬 ROUTINE-CONFIG에서 주입된다. 원본은 비공개 워크스페이스에서 운영 중. -->
 # pr-review-intake
 
-이 프롬프트 본문은 automation 트리거가 이미 줬다. **이 파일을 다시 읽지 않고, 자기 지시를 `rg`·`grep`으로 검색하지 않는다.** 재읽기 한 번과 자기 검색 한 번이 회차 도구 출력의 54%였다(2026-09-16 실측 7,659토큰). **개인 메모리(`~/.devin/`·`~/.codex/memories/`)도 읽지 않는다** — 2026-09-17 07:20 회차가 첫 턴에 그것을 `rg`로 28,337자 올려 11턴 내내 다시 실었다. 무인 회차의 판단은 이 프롬프트와 맥락 파일의 `config`만으로 한다.
+이 파일을 지금 읽은 것이 정상이다 — 트리거는 경로만 준다. **이 파일은 한 번만 읽고 다시 읽지 않고, 자기 지시를 `rg`·`grep`으로 검색하지 않는다.** 재읽기 한 번과 자기 검색 한 번이 회차 도구 출력의 54%였다(2026-09-16 실측 7,659토큰). **개인 메모리(`~/.devin/`·`~/.codex/memories/`)도 읽지 않는다** — 2026-09-17 07:20 회차가 첫 턴에 그것을 `rg`로 28,337자 올려 11턴 내내 다시 실었다. 무인 회차의 판단은 이 프롬프트와 맥락 파일의 `config`만으로 한다.
 
 이 실행은 Slack의 PR 리뷰 요청을 수집해 Azure DevOps PR을 리뷰하고, 댓글을 남긴 PR만 `state/pr-review-worklist.jsonl`에 등록한다. 신규 스킬을 만들거나 기존 루틴·상태를 변경하지 않는다. 실행에 필요한 회사 좌표와 PR 댓글 면책 문구는 `state/gate/context.pr-review-intake.json`의 `config`에서 읽는다 — precheck가 `ROUTINE-CONFIG.md`를 이미 파싱해 실어 둔다. **`config`가 없을 때만 `~/work/ROUTINE-CONFIG.md`를 직접 읽는다.** 값을 프롬프트에 하드코딩하지 않는다. `~/work/.legacy-routine-state/`와 `~/work/legacy-routines/`는 읽지도 쓰지도 않는다 — 이 워크스페이스의 `state/`만 상태로 쓴다. 크리덴셜 값은 읽거나 출력·기록하지 않는다.
 
-ADO는 Azure DevOps MCP가 아니라 모든 호출을 `bash bin/az pr-review-intake ...`로 한다. 사내 **이 세션은 `git` 명령을 실행하지 않는다.** 코드 판정은 PR별 세션이 하고 이 세션은 그 결과만 쓴다. diff가 이 컨텍스트에 들어오면 회차가 끝날 때까지 매 턴 다시 읽힌다. 조직·채널·사용자·유저그룹 멘션·면책 문구는 맥락 파일의 `config`에서 얻는다 — `adoOrg`·`channels`·`user`·`slackUser`·`botUser`·`mentions`·`prUrlPattern`·`disclaimer`다.
+ADO는 Azure DevOps MCP가 아니라 모든 호출을 `bash bin/az pr-review-intake ...`로 한다. 레포 접근은 `git --no-optional-locks -C ~/work/<repository>` 읽기 명령으로 제한하고 fetch·clone·working tree 접근을 하지 않는다. 조직·채널·사용자·유저그룹 멘션·면책 문구는 맥락 파일의 `config`에서 얻는다 — `adoOrg`·`channels`·`user`·`slackUser`·`botUser`·`mentions`·`prUrlPattern`·`disclaimer`다.
 
- **쓰기 직전의 lock check는 두 형태다.** 셸 명령인 쓰기(`bin/az`의 POST·PATCH·`set-vote`, 원장·worklist append, `state/deploy-approval-react.sh`, `pr-session.sh close`, `mark.py`)는 `bash bin/guarded.sh pr-review-intake "$TOKEN" run <명령…>` 또는 `bash bin/guarded.sh pr-review-intake "$TOKEN" append <파일> '<한 줄>'`로 실행한다 — 스크립트가 check를 먼저 하고 실패하면 명령을 실행하지 않고 exit 3으로 끝나며, 그때는 소유권을 잃은 것이니 그 자리에서 종료하고 상태 기록·commit·release를 시도하지 않는다. 셸 명령이 아닌 쓰기 — MCP 도구(Slack·Jira·Confluence)와 파일 도구로 덮어쓰는 `state/ask.*.md`·`state/ado-body.*.json` 같은 모든 `state/` 파일 — 는 직전에 `bash bin/lock.sh check pr-review-intake "$TOKEN"`을 따로 한다. **아래 본문의 'lock check 뒤'는 이 규칙대로 읽는다** — 셸 명령이면 guarded 한 번, 그 외면 check 한 번. 실행 수단이 무엇이든 `state/` 쓰기는 이 둘 중 하나다. **영속 셸에 보내는 명령은 판정까지 한 줄에 쓴다.** 영속 셸은 결과에 종료코드를 싣지 않는다. 다음 턴을 통째로 써서 `$?`를 읽으면 쓰기 하나가 4턴이 된다 — 2026-09-17 08:50 회차는 48호출 중 16(33%)이 종료코드 전용 턴이었다. `if bash bin/guarded.sh pr-review-intake "$TOKEN" run <명령…>; then print -r -- OK; else print -r -- FAIL; fi`처럼 **분기와 표식 출력을 같은 줄에** 넣는다. 전역 지침의 "`; echo $?`를 붙이지 마라"는 종료코드가 도구 결과에 그대로 실리는 단발 실행을 가리키며, 영속 셸에는 해당하지 않는다 — 여기서는 한 줄 안의 분기가 그 자리를 대신한다. 그 밖의 자리에서 `lock.sh check`를 부르지 않는다. 소유권 상실 뒤에는 상태 기록, 게이트 commit, release를 시도하지 않는다. 파일 생성·수정은 이 워크스페이스 안에서 한다. `/tmp` 등 워크스페이스 밖 경로에 스크립트나 파일을 만들지 않는다. **파일을 지우지 않는다** — `rm`은 승인 프롬프트를 띄우고 무인 회차에는 답할 사람이 없어 그 자리에서 멈춘다. 재사용하는 파일은 덮어쓴다. **`git worktree`를 만들지 않고 빌드·테스트·패키지 매니저 명령(`mvn`·`gradle`·`npm`·`pytest` 등)을 실행하지 않는다.** 판정은 정적 읽기로만 한다 — 작업 사본을 만들면 정리가 필요해지고 그 정리가 다시 승인 프롬프트를 부른다.
+ **쓰기 직전의 lock check는 세 형태다.**
+셸 명령인 쓰기(`bin/az`의 POST·PATCH·`set-vote`, 원장·worklist append, `bin/deploy-approval-react.sh`, `mark.py`)는 `bash bin/guarded.sh pr-review-intake "$TOKEN" run <명령…>` 또는 `bash bin/guarded.sh pr-review-intake "$TOKEN" append <파일> '<한 줄>'`로 실행한다 — 스크립트가 check를 먼저 하고 실패하면 명령을 실행하지 않고 exit 3으로 끝나며, 그때는 소유권을 잃은 것이니 그 자리에서 종료하고 상태 기록·commit·release를 시도하지 않는다.
+매번 전체를 다시 쓰는 `state/` 파일(`state/ado-body.*.json`)은 `bash bin/guarded.sh pr-review-intake "$TOKEN" write <파일> <<'__BODY__'`에 이어 JSON 한 벌과 `__BODY__`를 넘기는 한 호출로 쓴다 — check가 그 안에 들어 있으므로 직전 check를 따로 하지 않고, 그 파일을 이 호출 바깥에서 리다이렉션이나 파일 도구로 먼저 열지도 않는다.
+그 외 셸 명령이 아닌 쓰기 — MCP 도구(Slack·Jira·Confluence) 호출과 파일 도구의 부분 수정 — 는 직전에 `bash bin/lock.sh check pr-review-intake "$TOKEN"`을 따로 한다.
+**아래 본문의 'lock check 뒤'는 이 규칙대로 읽는다** — 셸 명령이면 guarded 한 번, 전체 재작성 파일이면 write 한 번, 그 외면 check 한 번.
+실행 수단이 무엇이든 `state/` 쓰기는 이 셋 중 하나다.
+**영속 셸에 보내는 명령은 판정까지 한 줄에 쓴다.**
+영속 셸은 결과에 종료코드를 싣지 않는다.
+다음 턴을 통째로 써서 `$?`를 읽으면 쓰기 하나가 4턴이 된다 — 2026-09-17 08:50 회차는 48호출 중 16(33%)이 종료코드 전용 턴이었다.
+`if bash bin/guarded.sh pr-review-intake "$TOKEN" run <명령…>; then echo OK; else echo FAIL; fi`처럼 **분기와 표식 출력을 같은 줄에** 넣는다.
+전역 지침의 "`; echo $?`를 붙이지 마라"는 종료코드가 도구 결과에 그대로 실리는 단발 실행을 가리키며, 영속 셸에는 해당하지 않는다 — 여기서는 한 줄 안의 분기가 그 자리를 대신한다.
+그 밖의 자리에서 `lock.sh check`를 부르지 않는다.
+소유권 상실 뒤에는 상태 기록, 게이트 commit, release를 시도하지 않는다.
+파일 생성·수정은 이 워크스페이스 안에서 한다.
+`/tmp` 등 워크스페이스 밖 경로에 스크립트나 파일을 만들지 않는다.
+**파일을 지우지 않는다** — `rm`은 승인 프롬프트를 띄우고 무인 회차에는 답할 사람이 없어 그 자리에서 멈춘다.
+재사용하는 파일은 덮어쓴다.
+**`git worktree`를 만들지 않고 빌드·테스트·패키지 매니저 명령(`mvn`·`gradle`·`npm`·`pytest` 등)을 실행하지 않는다.**
+판정은 정적 읽기로만 한다 — 작업 사본을 만들면 정리가 필요해지고 그 정리가 다시 승인 프롬프트를 부른다.
 
-Slack 접근은 claude.ai Slack 커넥터 도구로만 하며 **도구 이름과 인자를 탐색하지 않는다** — 키워드로 찾으면 그 목록 전체가 컨텍스트에 남아 회차가 끝날 때까지 매 턴 다시 읽힌다. 도구가 목록에 없으면 `ToolSearch("select:mcp__claude_ai_Slack__slack_read_channel,mcp__claude_ai_Slack__slack_read_thread,mcp__claude_ai_Slack__slack_send_message")`를 **한 번만** 부르고, 그 뒤로는 아래 이름과 인자를 그대로 쓴다.
+Slack 접근은 Slack MCP 서버의 아래 도구만 쓰며 **도구 이름과 인자를 탐색하지 않는다** — 키워드로 찾으면 그 목록 전체가 컨텍스트에 남아 회차가 끝날 때까지 매 턴 다시 읽힌다. 호출 형식은 실행 프로바이더로 갈린다 — devin: `mcp_call_tool({server_name:"slack", tool_name:"<도구명>", arguments:{…}})`; claude.ai 커넥터: `mcp__claude_ai_Slack__<도구명>({…})`(커넥터 목록에 도구가 없으면 `ToolSearch("select:mcp__claude_ai_Slack__slack_read_channel,mcp__claude_ai_Slack__slack_read_thread,mcp__claude_ai_Slack__slack_send_message")`를 **한 번만** 부른다). 그 외 프로바이더에서는 그 환경의 MCP 호출 수단을 한 번 확인한 뒤 아래 이름과 인자를 그대로 쓴다.
 
-- 채널 읽기 `mcp__claude_ai_Slack__slack_read_channel({channel_id, oldest, latest, limit, response_format:"detailed"})`
-- 스레드 읽기 `mcp__claude_ai_Slack__slack_read_thread({channel_id, message_ts, oldest, limit, response_format:"detailed"})`
+- 채널 읽기 `slack_read_channel({channel_id, oldest, latest, limit, response_format:"detailed"})`
+- 스레드 읽기 `slack_read_thread({channel_id, message_ts, oldest, limit, response_format:"detailed"})`
 - 반응 확인 — 전용 도구가 없다. 위 두 읽기의 `response_format:"detailed"` 응답에 반응이 실리므로 그것으로 센다.
-- 답글·DM `mcp__claude_ai_Slack__slack_send_message({channel_id, thread_ts, message})`
+- 답글·DM `slack_send_message({channel_id, thread_ts, message})`
 
 **인자 이름은 `channel_id`와 `message_ts`다.** `channel`·`ts`·`thread_id`로 부르면 필수 인자 누락으로 거부되고, 첫 Slack 수집 실패는 회차 중단 사유라 그 회차가 통째로 버려진다. 본문 필드는 `text`가 아니라 `message`다.
 
-Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 않는다. 봇 ✅를 **다는** 것만 예외이며 그것은 `state/deploy-approval-react.sh` 헬퍼가 담당한다.
+Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 않는다. 봇 ✅를 **다는** 것만 예외이며 그것은 `bin/deploy-approval-react.sh` 헬퍼가 담당한다.
 
 
 **도구 이름을 모를 때만 탐색하고, 탐색은 이름만 뽑는다.** `ALL_TOOLS` 필터 결과를 도구 객체째로 출력하면 설명 필드까지 컨텍스트에 박혀 회차가 끝날 때까지 매 턴 다시 읽힌다(2026-09-15 실측: 한 번에 8,920토큰). `x.name`만 출력하고, 같은 회차에서 같은 탐색을 두 번 하지 않는다.
@@ -29,10 +47,10 @@ Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 �
 
 `repos`·`devops` 호출에는 `--org <config 조직 URL>`을 포함한다. 인증 확인용 `account show`는 그 인자를 받지 않으므로 붙이지 않는다. 모든 az 호출은 **단일 명령**으로만 실행한다. `cd`·파이프·리다이렉션을 쓰지 않으며, 복합이 필요하면 워크스페이스 안에 `.sh`를 만들고 `bash <파일>`로 실행한다. **조회 다이어트**: `--project` 없는 조직 전체 `pr list`와 `--top 1000`류 전량 덤프를 금지하고, 모든 조회는 `--query`로 필요한 최소 필드만 뽑는다. 대형 JSON 덤프는 컨텍스트를 태워 회차를 상한까지 끌고 간다(2026-08-24 실관측).
 
-- **스레드 목록**: `bash bin/az pr-review-intake devops invoke --area git --resource pullRequestThreads --route-parameters project={project} repositoryId={repo} pullRequestId={PR_ID} --org <config 조직 URL> --api-version 7.1 -o json` → `value[]`(각 `comments[]`·`status`·`threadContext.filePath`·`comments[].author.uniqueName`·`comments[].publishedDate`).
+- **스레드 목록**: `bash bin/az pr-review-intake devops invoke --area git --resource pullRequestThreads --route-parameters project={project} repositoryId={repo} pullRequestId={PR_ID} --org <config 조직 URL> --api-version 7.1 --query "value[].{id:id,status:status,isDeleted:isDeleted,threadContext:{filePath:threadContext.filePath},comments:comments[].{id:id,parentCommentId:parentCommentId,commentType:commentType,content:content,publishedDate:publishedDate,isDeleted:isDeleted,author:{uniqueName:author.uniqueName}}}" -o json` — 프로젝션은 삭제·system 스레드를 버리지 않는다(멱등 판정과 경로 분류가 그것들을 본다).
   멱등 판정(내 댓글 존재)만 필요하면 `--query "value[?isDeleted != \`true\` && comments[0].commentType == 'text'].{id:id,status:status,author:comments[0].author.uniqueName}"`로 충분하다. **`commentType`을 반드시 건다** — 착수 투표가 `<내 표시 이름> voted -5`라는 내 이름의 `system` 스레드를 만들고, 그것을 내 루트 댓글로 세면 그 PR은 멱등 스킵되어 영원히 리뷰되지 않는다(2026-09-16 PR {PR} 실관측).
-- **새 리뷰 스레드**: 본문 JSON을 `state/ado-body.pr-review-intake.json`에 쓴다 — `{"comments":[{"parentCommentId":0,"content":"...","commentType":"text"}],"status":"active","threadContext":{"filePath":"/{경로}","rightFileStart":{"line":N,"offset":1},"rightFileEnd":{"line":N,"offset":1}}}`를 넣고 `bash bin/az pr-review-intake devops invoke --area git --resource pullRequestThreads --route-parameters project={project} repositoryId={repo} pullRequestId={PR_ID} --org <config 조직 URL> --api-version 7.1 --http-method POST --in-file state/ado-body.pr-review-intake.json`. 매번 덮어쓰고 지우지 않는다.
-- **대댓글**: 본문 JSON을 `state/ado-body.pr-review-intake.json`에 쓴다 — `{"content":"...","parentCommentId":{원댓글ID},"commentType":"text"}`를 넣고 `bash bin/az pr-review-intake devops invoke --area git --resource pullRequestThreadComments --route-parameters project={project} repositoryId={repo} pullRequestId={PR_ID} threadId={threadId} --org <config 조직 URL> --api-version 7.1 --http-method POST --in-file state/ado-body.pr-review-intake.json`. 매번 덮어쓰고 지우지 않는다.
+- **새 리뷰 스레드**: 본문 JSON은 `bash bin/guarded.sh pr-review-intake "$TOKEN" write state/ado-body.pr-review-intake.json <<'__BODY__'`에 이어 JSON과 `__BODY__`를 넘기는 한 호출로 쓴다 — check가 그 안에 들어 있으므로 직전 check와 파일 도구 쓰기를 하지 않는다. 넣는 내용은 `{"comments":[{"parentCommentId":0,"content":"...","commentType":"text"}],"status":"active","threadContext":{"filePath":"/{경로}","rightFileStart":{"line":N,"offset":1},"rightFileEnd":{"line":N,"offset":1}}}`이고, 이어 `bash bin/az pr-review-intake devops invoke --area git --resource pullRequestThreads --route-parameters project={project} repositoryId={repo} pullRequestId={PR_ID} --org <config 조직 URL> --api-version 7.1 --http-method POST --in-file state/ado-body.pr-review-intake.json`. 매번 덮어쓰고 지우지 않는다.
+- **대댓글**: 본문 JSON은 위와 같은 `guarded write` 한 호출로 `state/ado-body.pr-review-intake.json`에 쓴다 — `{"content":"...","parentCommentId":{원댓글ID},"commentType":"text"}`를 넣고 `bash bin/az pr-review-intake devops invoke --area git --resource pullRequestThreadComments --route-parameters project={project} repositoryId={repo} pullRequestId={PR_ID} threadId={threadId} --org <config 조직 URL> --api-version 7.1 --http-method POST --in-file state/ado-body.pr-review-intake.json`. 매번 덮어쓰고 지우지 않는다.
 - **투표**: `bash bin/az pr-review-intake repos pr set-vote --id {PR_ID} --vote {approve|approve-with-suggestions|wait-for-author|reject|reset} --org <config 조직 URL>`.
 
 ## 1. 회차 시작
@@ -47,7 +65,7 @@ Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 �
 
 ## 2. 수집·판정·리뷰
 
-`config`는 `begin` JSON의 `context.config`다 — 맥락 파일을 다시 읽지 않는다. `context`가 null이거나 `config`가 없을 때만 `~/work/ROUTINE-CONFIG.md`를 읽어 해석한다. 둘 다 실패하면 대상 특정 전 실패로 회차를 중단한다. 인증은 `begin`이 `auth:ok`로 이미 확인했다 — `account show`를 다시 부르지 않는다.
+`config`는 `begin` JSON의 `context.config`다 — 맥락 파일을 다시 읽지 않는다. `context`가 null이거나 `config`가 없을 때만 `~/work/ROUTINE-CONFIG.md`를 읽어 해석한다. 둘 다 실패하면 `python3 bin/round.py finish pr-review-intake "$TOKEN"`를 **`--commit` 없이 한 번 실행한 뒤** 대상 특정 전 실패로 회차를 중단한다. 인증은 `begin`이 `auth:ok`로 이미 확인했다 — `account show`를 다시 부르지 않는다.
 
 `lastRunTs`는 `begin` JSON의 `context.marks.lastRunTs`다 — **marks 파일을 읽지 않는다.** 그 파일의 `reviewedPrs` 279건(51KB, 12,519토큰)이 숫자 하나 때문에 매 회차 실렸다(2026-09-17 07:20 실측). 값이 없으면(null) **아래 식을 적용하지 않고** `oldest = runStartedEpoch - 1200`으로 둔다. 부트스트랩 값을 `lastRunTs`에 넣으면 식이 600초를 더 빼 창이 30분이 된다. ISO 날짜를 파싱하지 않고 epoch 산술만 쓴다.
 
@@ -58,20 +76,20 @@ oldest = min(runStartedEpoch - 1200, lastRunTs - 600)
 oldest = max(oldest, runStartedEpoch - 345600)
 ```
 
-메시지 ts는 정수/epoch 비교로 `runStartedEpoch` 이후를 제외한다. 96시간 상한을 적용했으면 보고에 남긴다. 첫 Slack 수집 실패는 대상 특정 전 실패이므로 회차를 중단한다. raw 메시지가 0건이면 0건 가드를 표시하고 watermark를 전진시키지 않는다. raw 메시지가 있었으나 필터 뒤 PR이 0건인 것은 정상 수집이다.
+메시지 ts는 정수/epoch 비교로 `runStartedEpoch` 이후를 제외한다. 96시간 상한을 적용했으면 보고에 남긴다. 첫 Slack 수집 실패는 `python3 bin/round.py finish pr-review-intake "$TOKEN"`를 **`--commit` 없이 한 번 실행한 뒤** 대상 특정 전 실패로 회차를 중단한다. raw 메시지가 0건이면 0건 가드를 표시하고 watermark를 전진시키지 않은 뒤 `python3 bin/round.py finish pr-review-intake "$TOKEN"`를 **`--commit` 없이 한 번 실행하고 종료한다**. raw 메시지가 있었으나 필터 뒤 PR이 0건인 것은 정상 수집이다.
 
-본인·봇 메시지는 제외한다. 메시지의 mrkdwn 원문에 `config`의 `mentions` 리터럴 중 하나가 부분 문자열로 있어야 한다. 의미 추론으로 대체하지 않는다. 통과 메시지에서 `config`의 `prUrlPattern` 형식인 URL을 모두 추출해 project, repository, PR ID, 원 Slack channel·thread ts를 매핑한다.
+본인·봇 메시지는 제외한다. **`context`의 `slackFloor`가 있으면 그 ts 이하의 메시지도 제외한다** — 그 경계 아래는 게이트가 처리 완료로 기록한 구간이고 precheck의 수집 대상도 같은 경계로 잘라, 어긋나면 경계 안의 PR이 맥락 없는 `미처리`로 떨어져 commit이 영구히 막힌다. 메시지의 mrkdwn 원문에 `config`의 `mentions` 리터럴 중 하나가 부분 문자열로 있어야 한다. 의미 추론으로 대체하지 않는다. 통과 메시지에서 `config`의 `prUrlPattern` 형식인 URL을 모두 추출해 project, repository, PR ID, 원 Slack channel·thread ts를 매핑한다.
 
-각 PR은 순차 처리한다.
+각 PR의 분류·착수 투표·worklist 등록·코드 판정·효과를 순차 처리한다.
 
 **completed PR의 source commit을 로컬에서 얻을 수 없으면 `처리 불가`로 분류한다.** 병합 시 `refs/pull/<id>/source`가 삭제되어 재시도로 복구되지 않는다. active PR의 커밋 부재는 `미처리`다. `처리 불가`는 보고에 사유와 함께 남긴다.
 
 - 내 루트 댓글이 이미 있으면 재리뷰·재대댓글하지 않는다. **`commentType`이 `system`인 스레드는 내 이름으로 생성돼도 리뷰가 아니다** — 투표·푸시 알림이 그렇다.
-- **내 루트 댓글이 없어도 그 커밋을 이미 판정했으면 다시 리뷰하지 않는다.** `python3 bin/prior-review.py <project> <repository> <pullRequestId>`의 `summary.srcCommit`이 맥락 `context.prs` 항목의 `srcCommit`과 같으면 그 커밋은 판정이 끝난 것이다. 투표·worklist 등록·세션 요청을 하지 않고 `이미 리뷰함`으로 보고한다. 멱등 판정을 내 루트 `text` 댓글로만 하면 **지적 0건 PR에는 그 댓글이 없어** 가드가 걸리지 않는다 — 11:03에 no-findings로 승인·close된 `tx-fe/<레포 E>#{PR}`이 같은 커밋 `263cdd08`로 12:04와 13:27에 다시 리뷰돼 1차 리뷰 한 벌을 통째로 버렸다(2026-09-17 실측). `deploy-approve-intake`가 같은 원장을 같은 규칙으로 읽는다. `srcCommit`이 다르면 리뷰 이후 새 커밋이 올라온 것이므로 평소대로 리뷰한다.
+- **내 루트 댓글이 없어도 그 커밋을 이미 판정했으면 다시 리뷰하지 않는다.** `python3 bin/prior-review.py <project> <repository> <pullRequestId>`의 `summary.srcCommit`이 맥락 `context.prs` 항목의 `srcCommit`과 같으면 그 커밋은 판정이 끝난 것이다. 투표·worklist 등록을 하지 않고 `이미 리뷰함`으로 보고한다. 멱등 판정을 내 루트 `text` 댓글로만 하면 **지적 0건 PR에는 그 댓글이 없어** 가드가 걸리지 않는다 — 11:03에 no-findings로 승인·close된 `tx-fe/<레포 E>#{PR}`이 같은 커밋 `263cdd08`로 12:04와 13:27에 다시 리뷰돼 1차 리뷰 한 벌을 통째로 버렸다(2026-09-17 실측). `deploy-approve-intake`가 같은 원장을 같은 규칙으로 읽는다. `srcCommit`이 다르면 리뷰 이후 새 커밋이 올라온 것이므로 평소대로 리뷰한다.
 - abandoned는 건너뛴다.
 - active와 completed는 모두 리뷰한다.
 
-**투표 전에 코드 판정이 가능한지 먼저 본다.** `begin` JSON의 `context`를 본다(맥락 파일을 다시 읽지 않는다). `context.prs`의 `<project>/<repository>#<pullRequestId>` 항목에 `status`·`srcCommit`·`tgtCommit`·`createdById`가 있으면 `repos pr show`를 다시 부르지 않는다. **항목에 `error`가 있거나 항목 자체가 없으면 그 PR을 `미처리`로 남기고 다음 PR로 간다 — 이 세션이 `repos pr show`를 대신 부르지 않는다.** 사전 조회가 실패한 PR은 다음 회차의 precheck가 다시 조회해 회복한다. 이어 `fetch`의 `<repository>#<pullRequestId>` 값을 본다. **`commit-present`일 때만 코드 판정이 가능하다** — `commit-missing`·`no-source-commit`·`status-unavailable`·`precheck-budget`·`pr-ref-missing`·`missing`·`fetch-failed`이거나 키가 없으면 active는 `미처리`, completed는 `처리 불가`로 분류하고 **투표도 worklist 등록도 하지 않는다.** 브랜치 fetch 성공은 그 커밋의 존재가 아니다 — precheck가 실제로 확인한 값이 `commit-present`다.
+**투표 전에 코드 판정이 가능한지 먼저 본다.** `begin` JSON의 `context`를 본다(맥락 파일을 다시 읽지 않는다). `context.prs`의 `<project>/<repository>#<pullRequestId>` 항목에 `status`·`srcCommit`·`tgtCommit`·`createdById`가 있으면 `repos pr show`를 다시 부르지 않는다. **항목에 `error`가 있거나 항목 자체가 없으면 그 PR을 `미처리`로 남기고 다음 PR로 간다 — 이 세션이 `repos pr show`를 대신 부르지 않는다.** 사전 조회가 실패한 PR은 다음 회차의 precheck가 다시 조회해 회복한다. 이어 `fetch`의 `<repository>#<pullRequestId>` 값을 본다. **`commit-present`일 때만 코드 판정이 가능하다** — `commit-missing`·`no-source-commit`·`status-unavailable`·`precheck-budget`·`pr-ref-missing`·`missing`·`fetch-failed`이거나 키가 없으면 active는 `미처리`, completed는 `처리 불가`로 분류하고 **투표도 worklist 등록도 하지 않는다.** `precheck-budget`으로 컨텍스트가 없는 PR은 `미처리`로 보고하되 **commit은 진행한다** — 게이트가 그 메시지 아래로만 전진하므로 다음 회차가 자동 재시도한다. 코드 판정 자체가 실패한 다른 `미처리` 규칙은 유지한다. 브랜치 fetch 성공은 그 커밋의 존재가 아니다 — precheck가 실제로 확인한 값이 `commit-present`다.
 
 **커밋이 확인된 active PR은 코드를 보기 전에 먼저 `wait-for-author`로 투표한다.**
 
@@ -79,16 +97,11 @@ oldest = max(oldest, runStartedEpoch - 345600)
 
 **같은 자리에서 worklist에 `op:"add"`로 등록한다.** 투표만 찍고 등록하지 않으면, 이어지는 코드 판정이 실패했을 때 그 PR은 `wait-for-author`가 걸린 채 어떤 회차도 다시 보지 않는 상태로 남는다. 등록해 두면 `pr-review-resolve`가 미해결 지적 0건으로 보고 `approve`로 올린 뒤 close한다.
 
-**코드 판정은 PR별 세션에서 한다. 이 세션은 `git` 명령을 실행하지 않는다.** diff가 이 컨텍스트에 들어오면 회차가 끝날 때까지 매 턴 다시 읽힌다.
+**코드 판정은 이 세션이 인라인으로 한다.** `~/work/harnie/skills/pr-review/SKILL.md`와 그 레포에 적용되는 팀 리뷰 규칙을 판정 시점에 읽고 그 기준으로 `findings`를 직접 산출한다 — 기준 본문을 댓글에 복사하지 않는다.
 
-1. `bash bin/pr-session.sh ensure "<project>/<repository>#<pullRequestId>"`로 세션을 얻는다. 실패하면 그 PR을 `미처리`로 남기고 다음 PR로 간다.
-2. `state/ask.pr-review-intake.md`에 지시를 쓴다. project·repository·PR id·source commit·target commit과 맥락 `prs` 항목의 `numstat`·`patch` 경로를 함께 담고, 아래를 담는다.
-   - `~/work/harnie/skills/pr-review/SKILL.md`와 레포에 적용되는 팀 리뷰 규칙을 읽고 그 기준으로 판단한다. 기준 본문을 복사하지 않는다.
-   - **PR 소속 커밋의 변경은 precheck가 이미 파일로 떨궜다.** 워커에게 **`git diff`를 직접 부르지 말라**고 쓴다. 워커는 `numstat`(파일별 추가·삭제 줄 수, 경로가 잘리지 않아 ADO filePath로 그대로 쓴다)을 먼저 읽어 볼 파일을 정하고, **rename된 파일은 옛 경로의 삭제 줄과 새 경로의 추가 줄로 따로 나오니 ADO `filePath`로는 추가 쪽(새) 경로만 쓴다 — 옛 경로는 source에 없다.**  `patch`에서 그 파일의 `diff --git` 구간을 찾아 그 부분만 읽는다 — 워커의 Bash는 `git --no-optional-locks`만 허용되므로(`pr-session.sh`) 셸 `grep`이 아니라 자기 파일 검색 도구로 찾는다. 변경 파일이 몇 개뿐이면 `patch`를 통째로 읽어도 된다. 변경 주변 코드가 더 필요할 때만 `git --no-optional-locks -C ~/work/<repository> show <source commit>:<경로>`를 쓴다. 라인 번호는 실제 source 기준이다. fetch·clone·working tree 접근과 레포 쓰기는 금지한다. **맥락 항목에 `numstat`·`patch`가 없을 때만** 워커가 직접 범위를 잡는다 — target..source 전체 diff가 아니라 PR 커밋 목록 또는 source 첫 커밋 부모부터 source까지다.
-   - ADO·Slack에 접근하지 않는다. 댓글·투표는 오케스트레이터가 한다.
-   - 결과를 **`{{RESULT_PATH}}`** 경로에 JSON 하나로 쓴다 — **이 문자열을 지시에 반드시 넣는다** — `ask`가 보내는 시점에 실제 경로로 치환한다. 빠뜨리면 세션이 결과를 어디에 쓸지 알 수 없어 그 PR이 timeout된다. 세션이 경로를 스스로 조회하지 않는다. `{"findings":[{"prefix":"issue|discuss|nit","filePath":"/경로","line":N,"content":"지적 본문"}],"summary":"한 줄 요약"}`이고 지적이 없으면 `findings`는 `[]`다. `content`에 프리픽스·멘션·면책을 넣지 않는다.
-3. `bash bin/pr-session.sh ask "<key>" state/ask.pr-review-intake.md`를 실행한다. 출력이 `ok <경로>`로 시작하지 않으면 그 PR을 `미처리`로 남기고 다음 PR로 간다 — **이 세션이 대신 판정하지 않는다.**
-4. `ask`가 성공 시 출력하는 `ok <경로>`의 그 경로에서 JSON을 읽어 그 내용만 쓴다. 경로를 따로 조회하지 않는다.
+PR 소속 커밋의 변경은 precheck가 이미 파일로 떨궜다 — `context.prs` 항목의 `numstat`·`patch` 경로다. `numstat`(파일별 추가·삭제 줄 수 — 경로가 잘리지 않아 ADO filePath로 그대로 쓴다)을 먼저 읽어 볼 파일을 정하고, **rename된 파일은 옛 경로의 삭제 줄과 새 경로의 추가 줄로 따로 나오니 ADO `filePath`로는 추가 쪽(새) 경로만 쓴다 — 옛 경로는 source에 없다.** `patch`에서 그 파일의 `diff --git` 구간을 찾아 그 부분만 읽는다. 읽을 구간이 둘 이상 정해졌으면 `sed -n 'a,bp;c,dp' <patch>` 한 호출에 범위를 나열하고, 그 출력이 표시 상한을 넘길 정도로 길면 나누어 읽는다. 변경 주변 코드가 더 필요할 때만 `git --no-optional-locks -C ~/work/<repository> show <source commit>:<경로>`를 쓴다. 예외로, hunk가 루프의 상한을 바꾸거나 `continue`·`break`를 추가·삭제·이동하면 그 루프의 `continue`·`break` 조건이 부르는 함수 중 patch 밖에서 정의된 것의 정의를 읽는다. 바뀌지 않은 줄의 조건도 포함한다. PR당 `git --no-optional-locks -C ~/work/<repository> grep -n -A15 -e '<정의 줄>' <source commit> -- <경로…>` 한 호출로 읽고(정의가 둘 이상이면 `-e`를 이어 붙이고, 정의 파일을 하나라도 모르면 `--` 이하를 뺀다), 정의 안에서 부르는 함수는 따라가지 않는다. 표준 라이브러리·프레임워크 함수는 읽지 않는다. 라인 번호는 실제 source 기준이다. fetch·clone·working tree 접근과 레포 쓰기는 금지한다. **맥락 항목에 `numstat`·`patch`가 없을 때만** 범위를 직접 잡는다 — target..source 전체 diff가 아니라 PR 커밋 목록 또는 source 첫 커밋 부모부터 source까지다.
+
+`findings`의 각 지적은 `issue:`·`discuss:`·`nit:` 접두어와 실제 변경 파일의 filePath·라인·지적 본문을 가지고, `summary`는 한 줄 요약이다. 지적 본문에 프리픽스·멘션·면책을 넣지 않는다.
 
 지적은 실제 변경 파일의 정확한 filePath·라인에 내가 루트인 새 ADO 스레드로 작성한다. 타인의 active 스레드에는 접두어 없는 보조 의견만 대댓글로 남긴다. 새 지적은 `issue:`·`discuss:`·`nit:` 분류와 PR 작성자 `@<GUID>` 리터럴 멘션을 첫 줄에 쓰고, `config`의 `disclaimer` 두 줄을 마지막에 실제 줄바꿈으로 붙인다. 새 스레드 JSON 작성과 POST 직전, 그리고 각 ADO 쓰기 직전에 lock check를 한다.
 
@@ -96,15 +109,24 @@ oldest = max(oldest, runStartedEpoch - 345600)
 
 각 새 댓글마다 라이브면 lock check 뒤 `state/review-findings.jsonl`에 현행 필드(`date`, `prefix`, `project`, `repository`, `pullRequestId`, `filePath`, `summary`)를 한 줄 append한다. 실패는 그 PR 실패다. dry-run에서는 등록·감사 로그의 예정만 보고한다.
 
-리뷰를 마치면 라이브에서 lock check 뒤 `state/pr-review-summary.jsonl`에 한 줄 append한다. `ts`, `key`, `project`, `repository`, `pullRequestId`, `srcCommit`(판정한 source commit), `prefixes`(이 회차 지적의 프리픽스 목록), `summary`(세션이 준 한 줄), `vote`(아래에서 정한 값)를 담는다. **`deploy-approve-intake`가 이 원장을 먼저 읽어 같은 PR을 다시 리뷰하지 않는다.**
+리뷰를 마치면 라이브에서 lock check 뒤 `state/pr-review-summary.jsonl`에 한 줄 append한다. `ts`, `key`, `project`, `repository`, `pullRequestId`, `srcCommit`(판정한 source commit), `prefixes`(이 회차 지적의 프리픽스 목록), `summary`(판정의 한 줄 요약), `vote`(아래에서 정한 값)를 담는다. **`deploy-approve-intake`가 이 원장을 먼저 읽어 같은 PR을 다시 리뷰하지 않는다.**
 
-리뷰를 마치면 active PR의 투표를 이 지적 구성으로 정한다. `issue:`·`discuss:`가 하나라도 있으면 **투표를 바꾸지 않는다**(착수 때 찍은 `wait-for-author`가 그대로 남는다). `nit:`만 있으면 `approve-with-suggestions`, 지적이 하나도 없으면 `approve`다. completed PR은 투표하지 않는다. **지적이 하나도 없는 PR은 그 투표가 성공한 뒤에만** 착수 때 등록한 worklist 항목을 닫는다 — lock check 뒤 `op:"close"`, `reason:"no-findings"`, `by:"pr-review-intake"`를 append한다. 등록한 쪽이 닫아야 하지만, 투표가 실패했는데 닫으면 승인되지 않은 PR이 추적에서 빠지고 resolver도 읽지 못한다. 투표가 실패하면 닫지 않고 그 PR을 미처리로 남긴다. **`approve` 또는 `approve-with-suggestions`가 성공한 PR은 worklist에서 닫고 세션도 닫는다.** lock check 뒤 `op:"close"`, `reason`은 각각 `no-findings`·`nit-only`, `by:"pr-review-intake"`를 append한 뒤 lock check 뒤 `bash bin/pr-session.sh close "<key>"`를 실행한다. 승인된 PR은 재검토 대상이 아니다 — `nit:`은 작성자 선택이라 그 스레드가 열려 있다는 이유로 추적을 유지하면 worklist와 세션이 무기한 점유된다. `wait-for-author`가 남은 PR의 세션은 유지한다 — `pr-review-resolve`가 그 세션에 재리뷰를 요청한다.
+리뷰를 마치면 active PR의 투표를 이 지적 구성으로 정한다. `issue:`·`discuss:`가 하나라도 있으면 **투표를 바꾸지 않는다**(착수 때 찍은 `wait-for-author`가 그대로 남는다). `nit:`만 있으면 `approve-with-suggestions`, 지적이 하나도 없으면 `approve`다. completed PR은 투표하지 않는다. **지적이 하나도 없는 PR은 그 투표가 성공한 뒤에만** 착수 때 등록한 worklist 항목을 닫는다 — lock check 뒤 `op:"close"`, `reason:"no-findings"`, `by:"pr-review-intake"`를 append한다. 등록한 쪽이 닫아야 하지만, 투표가 실패했는데 닫으면 승인되지 않은 PR이 추적에서 빠지고 resolver도 읽지 못한다. 투표가 실패하면 닫지 않고 그 PR을 미처리로 남긴다. `approve-with-suggestions`(nit만 남은 PR)는 **닫지 않고 worklist에 남긴다** — nit 스레드에 작성자가 답하면 `pr-review-resolve`가 검증하고, nit까지 전부 해소되면 그쪽에서 `approve` 재투표와 `all-threads-resolved` close가 작동한다. 병합·포기된 PR은 nit이 남아도 `pr-review-merged`가 정리한다.
 
 completed PR을 새로 리뷰했으면 원 Slack thread를 먼저 읽어 같은 취지의 대댓글이 없을 때만 한 메시지에 합쳐 참고용 리뷰 대댓글을 보낸다. 투표·Slack 대댓글 직전에도 각각 lock check를 한다.
 
 PR 하나의 ADO·Slack·로컬 읽기·쓰기·상태 기록 실패는 그 PR만 `미처리`로 남기고 다음 PR을 계속 처리한다. 모든 대상이 성공해야만 회차가 성공이며, **`처리 불가`와 `인계`로 분류한 PR은 이 판정에서 뺀다.**
 
-**`인계`는 착수 투표와 worklist `op:"add"`까지 성공했고, 그 PR에 내 `text` 스레드가 하나도 없으며, 코드 판정만 실패한 PR이다.** 세션 `ensure` 실패, `ask`가 `ok <경로>`를 주지 않음, timeout, 결과 JSON 읽기 실패가 여기 해당한다. **세 조건을 다 만족해야 한다.** 내 `text` 스레드가 이미 있는 PR은 `인계`가 아니라 `미처리`다 — resolve의 「미리뷰 복구」는 「내 `text` 스레드 0건」으로만 발화하므로, 스레드가 있는 PR의 판정 실패는 resolve가 이어받지 못한다. 그 PR을 `인계`로 세면 새 source commit이 리뷰되지 않은 채 watermark와 게이트가 전진하고, worklist·ADO 상태가 그대로라 `pr_review_resolve_gate`의 digest도 바뀌지 않아 resolve가 SKIP한다. 스레드 유무는 위 멱등 판정에서 이미 조회한 값이다 — 다시 조회하지 않는다. 그 PR은 `wait-for-author`가 찍힌 채 worklist에 남아 `pr-review-resolve`의 「미리뷰 복구」가 책임지므로 **Slack 창이 그 PR을 다시 필요로 하지 않는다** — 리뷰 전에 등록하는 이유가 그것이다. 이것을 `미처리`로 세면 그 PR 하나가 watermark와 게이트를 래칫으로 잠근다: 게이트가 안 올라가니 precheck가 매 회차 `new-channel-activity`로 RUN하고, `lastRunTs`가 안 전진하니 창이 `min(runStartedEpoch - 1200, lastRunTs - 600)`으로 계속 넓어지고, 창이 넓어지니 대상이 늘고, 대상이 늘수록 한 건이라도 실패할 확률이 올라가 다시 커밋을 못 한다. 2026-09-17 07:20부터 13:30까지 여섯 회차 연속으로 이 고리를 돌았다 — 게이트는 09-16 22:11, `lastRunTs`는 07:21:10에 고정됐고 창이 6시간으로 벌어졌으며, 30분짜리 회차가 락이 비는 즉시 다시 붙었다. 보고에는 `인계`한 PR과 그 사유를 남긴다. **코드 판정 전에 실패한 PR은 `인계`가 아니다** — 등록이 없으면 resolve가 그 PR을 모르므로 그대로 `미처리`이고 게이트를 막는 것이 맞다.
+**`인계`는 착수 투표와 worklist `op:"add"`까지 성공했고, 그 PR에 내 `text` 스레드가 하나도 없으며, 코드 판정만 실패한 PR이다.** diff 판독 실패·그 PR만의 세션 오류 등 코드 판정을 끝내지 못한 경우가 여기 해당한다.
+**세 조건을 다 만족해야 한다.**
+내 `text` 스레드가 이미 있는 PR은 `인계`가 아니라 `미처리`다 — resolve의 「미리뷰 복구」는 「내 `text` 스레드 0건」으로만 발화하므로, 스레드가 있는 PR의 판정 실패는 resolve가 이어받지 못한다.
+그 PR을 `인계`로 세면 새 source commit이 리뷰되지 않은 채 watermark와 게이트가 전진하고, worklist·ADO 상태가 그대로라 `pr_review_resolve_gate`의 digest도 바뀌지 않아 resolve가 SKIP한다.
+스레드 유무는 위 멱등 판정에서 이미 조회한 값이다 — 다시 조회하지 않는다.
+그 PR은 `wait-for-author`가 찍힌 채 worklist에 남아 `pr-review-resolve`의 「미리뷰 복구」가 책임지므로 **Slack 창이 그 PR을 다시 필요로 하지 않는다** — 리뷰 전에 등록하는 이유가 그것이다.
+이것을 `미처리`로 세면 그 PR 하나가 watermark와 게이트를 래칫으로 잠근다: 게이트가 안 올라가니 precheck가 매 회차 `new-channel-activity`로 RUN하고, `lastRunTs`가 안 전진하니 창이 `min(runStartedEpoch - 1200, lastRunTs - 600)`으로 계속 넓어지고, 창이 넓어지니 대상이 늘고, 대상이 늘수록 한 건이라도 실패할 확률이 올라가 다시 커밋을 못 한다.
+2026-09-17 07:20부터 13:30까지 여섯 회차 연속으로 이 고리를 돌았다 — 게이트는 09-16 22:11, `lastRunTs`는 07:21:10에 고정됐고 창이 6시간으로 벌어졌으며, 30분짜리 회차가 락이 비는 즉시 다시 붙었다.
+보고에는 `인계`한 PR과 그 사유를 남긴다.
+**코드 판정 전에 실패한 PR은 `인계`가 아니다** — 등록이 없으면 resolve가 그 PR을 모르므로 그대로 `미처리`이고 게이트를 막는 것이 맞다.
 
 ## 3. 상태 기록
 
@@ -112,6 +134,6 @@ raw 수집이 0건이 아니고 모든 대상이 성공했으며(`처리 불가`
 
 ## 4. 회차 종료와 보고
 
-정상 경로에서는 `python3 bin/round.py finish pr-review-intake "$TOKEN" [--commit]`를 **한 번** 실행한다. 스크립트가 lock check → 게이트 commit → 락 해제를 한 번에 처리한다. `--commit`은 모든 대상과 상태 기록이 성공했고 라이브일 때만 붙인다. dry-run, raw 0건 가드, PR 하나라도 `미처리`, 또는 상태 기록 실패에서는 commit하지 않는다 — `처리 불가`·`인계`·`이미 리뷰함`은 `미처리`가 아니므로 commit을 막지 않는다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`·`pr-session.sh sweep`을 따로 부르지 않는다.
+정상 경로에서는 `python3 bin/round.py finish pr-review-intake "$TOKEN" [--commit]`를 **한 번** 실행한다. 스크립트가 lock check → 게이트 commit → 락 해제를 한 번에 처리한다. `--commit`은 모든 대상과 상태 기록이 성공했고 라이브일 때만 붙인다. dry-run, raw 0건 가드, `precheck-budget` 이외의 PR 하나라도 `미처리`, 또는 상태 기록 실패에서는 commit하지 않는다. `precheck-budget`으로 컨텍스트가 없는 PR은 `미처리`로 보고하되 commit은 진행한다 — 게이트가 그 메시지 아래로만 전진하므로 다음 회차가 자동 재시도한다. `처리 불가`·`인계`·`이미 리뷰함`은 `미처리`가 아니므로 commit을 막지 않는다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`을 따로 부르지 않는다.
 
 보고는 한국어로 조회 창·96시간 캡·raw 0건 여부, 감지·제외·미처리 PR과 사유, PR별 댓글/투표/Slack 대댓글, worklist·감사 로그·mark·commit 여부, dry-run 수행 예정 목록을 남긴다. 크리덴셜은 보고하지 않는다.

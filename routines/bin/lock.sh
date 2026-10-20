@@ -2,7 +2,7 @@
 # sanitized template — 실제 값은 로컬 ROUTINE-CONFIG에서 주입된다.
 # lock.sh acquire|check|release <automation> [token]
 # 락 = state/locks/<automation>.lock/ 디렉터리, 안의 owner 파일에 획득 epoch.
-# mkdir의 원자성이 승자를 하나로 정한다. 30분을 넘긴 락은 좀비로 회수한다.
+# mkdir의 원자성이 승자를 하나로 정한다. 30분 동안 check가 없던 락만 좀비로 회수한다.
 set -u
 STALE=1800
 ROOT="${ROUTINE_STATE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)/state}"
@@ -10,6 +10,7 @@ CMD="${1:-}"; A="${2:-}"; TOK="${3:-}"
 [ -n "$CMD" ] && [ -n "$A" ] || { echo "usage: lock.sh acquire|check|release <automation> [token]" >&2; exit 2; }
 L="$ROOT/locks/$A.lock"
 O="$L/owner"
+H="$L/heartbeat"
 mkdir -p "$ROOT/locks" 2>/dev/null || { echo "lock: state root not writable" >&2; exit 2; }
 
 now=$(date +%s)
@@ -21,10 +22,15 @@ case "$CMD" in
       printf '%s\n' "$now"
       exit 0
     fi
-    # 이미 있다 — 나이를 본다
+    # 이미 있다 — owner epoch과 마지막 check 중 최신 시각을 본다. 오래 걸리지만
+    # 쓰기 직전 check를 계속하는 회차를 획득 시각만으로 회수하지 않는다.
     owned=$(cat "$O" 2>/dev/null || echo 0)
     case "$owned" in ''|*[!0-9]*) owned=0 ;; esac
-    if [ "$owned" -gt 0 ] && [ $((now - owned)) -le "$STALE" ]; then
+    heartbeat=$(stat -f %m "$H" 2>/dev/null || echo 0)
+    case "$heartbeat" in ''|*[!0-9]*) heartbeat=0 ;; esac
+    latest="$owned"
+    [ "$heartbeat" -gt "$latest" ] && latest="$heartbeat"
+    if [ "$latest" -gt 0 ] && [ $((now - latest)) -le "$STALE" ]; then
       exit 1                      # 살아 있는 소유자
     fi
     # 좀비 회수는 mv로 한다 — rm 후 mkdir는 두 단계라, stale을 함께 본 두
@@ -36,7 +42,12 @@ case "$CMD" in
     mkdir "$L.reclaim" 2>/dev/null || exit 1
     again=$(cat "$O" 2>/dev/null || echo 0)
     case "$again" in ''|*[!0-9]*) again=0 ;; esac
-    if [ "$again" = "$owned" ] && { [ "$again" -eq 0 ] || [ $((now - again)) -gt "$STALE" ]; }; then
+    heartbeat=$(stat -f %m "$H" 2>/dev/null || echo 0)
+    case "$heartbeat" in ''|*[!0-9]*) heartbeat=0 ;; esac
+    latest="$again"
+    [ "$heartbeat" -gt "$latest" ] && latest="$heartbeat"
+    if [ "$again" = "$owned" ] && { [ "$latest" -eq 0 ] || [ $((now - latest)) -gt "$STALE" ]; }; then
+      # 재확인과 owner 교체 사이의 ms 간극은 이 회수 권한으로 닫지 않는다.
       printf '%s\n' "$now" > "$O"
       rmdir "$L.reclaim" 2>/dev/null
       printf '%s\n' "$now"
@@ -48,6 +59,7 @@ case "$CMD" in
   check)
     [ -n "$TOK" ] || exit 2
     [ "$(cat "$O" 2>/dev/null)" = "$TOK" ] || exit 1
+    touch "$H"
     exit 0
     ;;
   release)

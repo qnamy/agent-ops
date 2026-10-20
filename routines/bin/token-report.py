@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 # sanitized template — 실제 값은 로컬 ROUTINE-CONFIG에서 주입된다.
-"""루틴 세션의 토큰 사용량을 센다. codex와 Devin 양쪽을 본다.
+"""루틴 세션의 토큰 사용량을 센다. codex·Claude·Devin 셋을 본다.
 
 usage: token-report.py [<시작> [<끝>]]
        시작·끝은 epoch 또는 'YYYY-MM-DD HH:MM'. 생략하면 전체·현재.
 
-회차·워커·사람 셋으로 가른다. 회차는 `round.py begin`(또는 옛 `lock.sh acquire`)을
-**실행한** 세션이다 — 워커는 ADO·Slack·state 쓰기가 금지돼 락을 쓸 일이 없다.
+회차·워커·사람 셋으로 가른다. 회차 식별은 provider마다 다르다 — codex는
+`round.py begin`(또는 옛 `lock.sh acquire`)을 **실행한** 세션이고, Claude·Devin은
+첫 사용자 입력이 `<레포>/prompts/<automation>.md 를 읽고 그 지시를 지금 그대로
+수행하라.` 형태인 세션이다(orca automation이 이 문장 하나로 세션을 연다).
+워커는 ADO·Slack·state 쓰기가 금지돼 락을 쓸 일이 없고, `pr-session.sh ask`가
+보낸 지시로 시작하므로 첫 입력에 결과 경로(`review-result.…`)나 지시 헤더가 있다.
 
-**구간은 양쪽 다 턴 단위로 가른다.** 세션 시작 시각이나 파일 mtime으로 가르면
-세션 재사용이 그대로 오차가 된다 — 2026-09-17 08:43에 15시간짜리 세션 하나가
-통째로 하루치로 잡혔다. codex는 `last_token_usage`(턴별 증분)를, Devin은
-턴마다 남는 `usage`를 구간 안에서만 합산한다. `세션` 열은 구간 안에 턴이 하나
-이상 있는 세션 수이고, 구간을 걸친 세션은 구간 안 턴만 실린다.
+**구간은 어느 provider든 턴 단위로 가른다.** 세션 시작 시각이나 파일 mtime으로
+가르면 세션 재사용이 그대로 오차가 된다 — 2026-09-17 08:43에 15시간짜리 세션
+하나가 통째로 하루치로 잡혔다. codex는 `last_token_usage`(턴별 증분)를,
+Claude는 턴마다 남는 `usage`를, Devin은 스텝 `metrics`를 구간 안에서만 합산한다.
+`세션` 열은 구간 안에 턴이 하나 이상 있는 세션 수이고, 구간을 걸친 세션은
+구간 안 턴만 실린다.
 
 **어느 쪽도 루틴 전용이 아니다.** 같은 디렉터리에 사람이 띄운 관측·작업 세션이
-양쪽 다 섞인다. 워커는 `pr-session.sh ask`가 보낸 지시를 받으므로 그 본문에 치환된
-결과 경로(`review-result.…`)가 있다. 대장(`state/pr-sessions/`)은 `close`·`sweep`에서
-지워져 사후 식별에 못 쓴다. codex 쪽에는 워커 갈래가 없다 — `ensure`가 워커를
-`devin`으로만 띄운다.
+셋 다 섞인다. Devin 전사는 레포 공통(`~/.local/share/devin/cli/transcripts/`)이라
+cwd를 system 스텝의 `Current workspace directories:`에서 꺼내 정확히 대조한다 —
+다른 레포·다른 워크트리 세션은 사람 칸에도 넣지 않는다. codex 쪽에는 워커
+갈래가 없다 — `ensure`가 워커를 codex로 띄운 적이 없다.
 
 캐시 입력은 정가의 1/10로 과금된다는 가정을 쓰지 않는다. 요금표를 확인하지
 않았으므로 입력합·정가·턴만 낸다.
@@ -31,17 +36,24 @@ import re
 import sys
 
 CODEX = os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")
-DEVIN = os.path.expanduser("~/.devin/projects/-Users-<user>-work-orca-automations/*.jsonl")
+CLAUDE = os.path.expanduser("~/.claude/projects/-Users-<user>-work-orca-automations/*.jsonl")
+DEVIN = os.path.expanduser("~/.local/share/devin/cli/transcripts/*.json")
 # cwd는 정확히 대조한다. 부분 일치로 고르면 같은 레포의 다른 워크트리 세션이
 # 섞인다 — `git worktree list`에 `~/orca/workspaces/orca-automations/window-start`가
 # 있고 그 경로에도 이 문자열이 들어 있다. 세 도구가 같은 기준을 쓴다.
 ROOT = "~/work/orca-automations"
+# 회차를 여는 트리거 문장이다. 파일명이 automation 이름이다. 검색으로 본다 —
+# 앞에 터미널 이스케이프가 붙어 오는 세션이 있다(lapis-general 실측).
+TRIGGER = re.compile(r"prompts/([a-z0-9-]+)\.md 를 읽고 그 지시를 지금 그대로 수행하라")
 # `ask`가 보내는 지시의 공통 표식이다. 본문 형태는 둘이고 서로 겹치는 문구가
 # 없다 — intake는 `<레포> 저장소 PR <번호>를 정적 검토하라`로 시작하고 resolve의
 # 해소 검증은 `# PR review comment resolution verification`으로 시작한다. 둘 다
 # `{{RESULT_PATH}}`를 하나씩 갖고 `ask`가 보내는 시점에 실제 결과 경로로 치환하므로
-# 그 경로가 양쪽에 반드시 실린다. 문구로 가르면 resolve 워커가 사람으로 잡힌다.
-WORKER_OPENER = re.compile(r"review-result\.")
+# 그 경로가 양쪽에 반드시 실린다. 헤더 형태(`# PR 리뷰 요청`·`# 배포 승인` 등)도
+# 같이 본다 — 경로가 빠진 지시 변형이 와도 워커로 잡힌다.
+WORKER_OPENER = re.compile(
+    r"review-result\.|저장소 PR \d|# PR (리뷰|코드 리뷰|코드 판정)|# 배포 승인|# (?:스레드 )?해소 검증"
+)
 # 회차는 시작 명령을 **실행한** 세션이다. 도구호출 인자 전체를 보면 안 된다 —
 # 파일 쓰기도 같은 도구의 인자로 오므로, 그 명령줄이 본문에 든 패치를 적용한
 # 개발 세션이 회차가 된다(2026-09-10 12:22·12:27 두 세션이 그렇게 잡혔고 그날
@@ -61,6 +73,8 @@ ROUND_CALL = re.compile(
     r"(?:(?:python3?|bash|sh)\s+)?bin/(?:round\.py begin|lock\.sh acquire)\s+([a-z-]+)",
     re.M,
 )
+# Devin 전사(ATIF)의 system 스텝에 뜨는 작업 디렉터리다.
+DEVIN_CWD = re.compile(r"^  (\S+) \(cwd\)\s*$", re.M)
 
 
 def is_round_call(payload):
@@ -101,14 +115,31 @@ def stamp_of(entry):
         return None
 
 
+def matched(pattern, label):
+    """스캔 대상을 돌려준다. 하나도 없으면 조용한 0 대신 경고를 낸다."""
+    paths = glob.glob(pattern)
+    if not paths:
+        print(f"경고: {label} 전사 glob이 0건이다 — {pattern}", file=sys.stderr)
+    return paths
+
+
+def role_of(opener):
+    """첫 사용자 입력으로 회차·워커·사람을 가른다."""
+    if opener and TRIGGER.search(opener):
+        return "orchestrator"
+    if opener and WORKER_OPENER.search(opener):
+        return "worker"
+    return "human"
+
+
 def scan_codex(since, until, orchestrator, human):
     """codex 세션을 회차와 사람으로 가른다.
 
-    워커 갈래를 두지 않는다 — `bin/pr-session.sh`의 `ensure`가 워커를 `devin`
-    명령으로만 띄우므로 루틴이 만드는 codex 워커가 없다. 갈래를 남기면 PR 번호가
+    워커 갈래를 두지 않는다 — `bin/pr-session.sh`의 `ensure`가 워커를 codex로
+    띄운 적이 없으므로 루틴이 만드는 codex 워커가 없다. 갈래를 남기면 PR 번호가
     섞인 사람 세션만 거기 들어가 사람 비용이 워커로 계상된다.
     """
-    for path in glob.glob(CODEX):
+    for path in matched(CODEX, "codex"):
         if os.path.getmtime(path) < since:
             continue
         cwd = None
@@ -160,12 +191,14 @@ def first_user_text(entry):
     return content if content and not content.startswith("<") else None
 
 
-def scan_devin(since, until, worker, human):
-    """Devin은 턴마다 usage를 남긴다. 세션 누계가 없으므로 합산한다.
+def scan_claude(since, until, buckets):
+    """Claude는 턴마다 usage를 남긴다. 세션 누계가 없으므로 합산한다.
 
     `cache_creation_input_tokens`는 캐시에 올리는 쓰기라 정가로 센다.
+    프로젝트 디렉터리가 곧 cwd 범위다 — 다른 워크트리 세션은 다른 디렉터리에
+    떨어지므로 여기서 따로 대조하지 않는다.
     """
-    for path in glob.glob(DEVIN):
+    for path in matched(CLAUDE, "claude"):
         if os.path.getmtime(path) < since:
             continue
         opener = None
@@ -191,8 +224,65 @@ def scan_devin(since, until, worker, human):
             output += usage.get("output_tokens", 0)
         if not turns:
             continue
-        bucket = worker if opener and WORKER_OPENER.search(opener) else human
-        add(bucket, turns, fresh + cache, cache, fresh, output)
+        add(buckets[role_of(opener)], turns, fresh + cache, cache, fresh, output)
+
+
+def devin_text(message):
+    """Devin 스텝 본문. 텍스트+이미지 입력은 파트 리스트로 남는다."""
+    if isinstance(message, list):
+        return "\n".join(p.get("text", "") for p in message if isinstance(p, dict))
+    return message or ""
+
+
+def devin_opener_and_cwd(steps):
+    """첫 user 스텝의 본문과, system 스텝에 뜬 작업 디렉터리."""
+    opener = cwd = None
+    for step in steps:
+        if opener is None and step.get("source") == "user" and step.get("message"):
+            opener = devin_text(step["message"]).strip()
+        if cwd is None and step.get("source") == "system":
+            found = DEVIN_CWD.search(devin_text(step.get("message")))
+            if found:
+                cwd = found.group(1)
+        if opener is not None and cwd is not None:
+            break
+    return opener, cwd
+
+
+def scan_devin(since, until, buckets):
+    """Devin은 스텝 `metrics`에 턴별 사용을 남긴다(ATIF). 합은 `final_metrics`와
+    같다 — 표본으로 확인했다.
+
+    `prompt_tokens`는 `cached_tokens`를 이미 포함한다 — 캐시를 빼면 정가다.
+    전사는 레포 공통이므로 cwd를 system 스텝에서 꺼내 정확히 대조한다.
+    """
+    for path in matched(DEVIN, "devin"):
+        if os.path.getmtime(path) < since:
+            continue
+        try:
+            transcript = json.load(open(path))
+        except Exception:
+            continue
+        steps = transcript.get("steps") or []
+        opener, cwd = devin_opener_and_cwd(steps)
+        if cwd != ROOT:
+            continue
+        turns = fresh = cache = output = 0
+        for step in steps:
+            metrics = step.get("metrics")
+            if not metrics:
+                continue
+            at = stamp_of(step)
+            if at is None or not (since <= at < until):
+                continue
+            turns += 1
+            prompt = metrics.get("prompt_tokens", 0)
+            cache += metrics.get("cached_tokens", 0)
+            fresh += prompt - metrics.get("cached_tokens", 0)
+            output += metrics.get("completion_tokens", 0)
+        if not turns:
+            continue
+        add(buckets[role_of(opener)], turns, fresh + cache, cache, fresh, output)
 
 
 def render(label, buckets):
@@ -210,19 +300,25 @@ def render(label, buckets):
 def main(argv):
     since = moment(argv[1] if len(argv) > 1 else None, 0.0)
     until = moment(argv[2] if len(argv) > 2 else None, 2.0e10)
-    orchestrator, codex_human = blank(), blank()
-    devin_worker, devin_human = blank(), blank()
-    scan_codex(since, until, orchestrator, codex_human)
-    scan_devin(since, until, devin_worker, devin_human)
+    codex = {"orchestrator": blank(), "human": blank()}
+    claude = {"orchestrator": blank(), "worker": blank(), "human": blank()}
+    devin = {"orchestrator": blank(), "worker": blank(), "human": blank()}
+    scan_codex(since, until, codex["orchestrator"], codex["human"])
+    scan_claude(since, until, claude)
+    scan_devin(since, until, devin)
     start = datetime.datetime.fromtimestamp(since).strftime("%m-%d %H:%M") if since else "전체"
     end = datetime.datetime.fromtimestamp(until).strftime("%m-%d %H:%M") if until < 2.0e10 else "현재"
     render(
         f"{start} ~ {end}",
         [
-            ("오케스트레이터", orchestrator),
-            ("워커 devin", devin_worker),
-            ("사람 codex", codex_human),
-            ("사람 devin", devin_human),
+            ("오케 codex", codex["orchestrator"]),
+            ("오케 claude", claude["orchestrator"]),
+            ("오케 devin", devin["orchestrator"]),
+            ("워커 claude", claude["worker"]),
+            ("워커 devin", devin["worker"]),
+            ("사람 codex", codex["human"]),
+            ("사람 claude", claude["human"]),
+            ("사람 devin", devin["human"]),
         ],
     )
     return 0

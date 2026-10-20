@@ -18,7 +18,7 @@ D="$ROOT/azure/$A"
   echo "az: no azure profile for '$A' — bin/seed-azure.sh 를 먼저 돌려라" >&2
   exit 78
 }
-# 확장은 automation 6개가 공유한다(20MB, 읽기만 한다). 없으면 az가 매 호출마다
+# 확장은 automation 7개가 공유한다(20MB, 읽기만 한다). 없으면 az가 매 호출마다
 # azure-devops 확장 재설치를 시도해 repos·devops 명령이 실패한다.
 EXT="$ROOT/azure-ext"
 # 마커는 시드가 끝난 뒤에만 쓰인다 — 중간에 끊긴 사본을 완료로 보지 않는다.

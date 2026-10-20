@@ -32,10 +32,28 @@ for t in $targets; do
   # 레포 이름의 공백은 %20으로 와 있다(단어 분리 방지). 로컬 경로용으로 되돌린다.
   r=$(printf '%s' "$r" | sed 's/%20/ /g')
   if [ ! -d "$BASE/$r/.git" ]; then
-    echo "missing: $r"
-    continue
-  fi
-  if git -C "$BASE/$r" fetch --quiet origin 2>/dev/null; then
+    if [ -z "$url" ]; then
+      echo "missing: $r"
+      continue
+    fi
+    # 로컬 clone이 없으면 pull ref를 가져올 곳 자체가 없어 그 repo의 PR이 매
+    # 회차 commit-missing으로 미처리된다 — 2026-09-22 실측: azp-agent·
+    # <레포 G> 부재로 11개 PR이 intake 게이트 commit을 영구 차단했다.
+    # 정본 URL로만 clone한다 — clone의 origin이 정본이어야 위
+    # <레포 A> 같은 개인 fork 가리킴 사고가 재발하지 않는다.
+    # 반만 받은 clone을
+    # $BASE/$r에 두지 않도록 같은 파일시스템의 임시 디렉터리에 받아 rename한다.
+    # clone 직후라 origin fetch는 건너뛰고 아래 pull ref fetch로 간다.
+    if tmp=$(mktemp -d "$BASE/.fetch-clone.XXXXXX") &&
+       git clone --quiet "$url" "$tmp" 2>/dev/null &&
+       [ ! -e "$BASE/$r" ] && mv "$tmp" "$BASE/$r"; then
+      echo "cloned: $r"
+    else
+      rm -rf "$tmp"
+      echo "missing: $r"
+      continue
+    fi
+  elif git -C "$BASE/$r" fetch --quiet origin 2>/dev/null; then
     echo "fetched: $r"
   else
     # origin이 실패해도 멈추지 않는다. PR 커밋을 실제로 공급하는 것은 아래

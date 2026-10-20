@@ -20,15 +20,18 @@ def fold(path: Path) -> list[dict]:
             continue
         try:
             event = json.loads(line)
-        except json.JSONDecodeError as error:
-            raise ValueError(f"invalid JSON at line {line_no}") from error
+        except json.JSONDecodeError:
+            print(f"warning: invalid JSON at line {line_no}", file=sys.stderr)
+            continue
         if not isinstance(event, dict):
-            raise ValueError(f"event at line {line_no} is not an object")
+            print(f"warning: event at line {line_no} is not an object", file=sys.stderr)
+            continue
 
         key = event.get("key")
         op = event.get("op")
         if not isinstance(key, str) or not key:
-            raise ValueError(f"event at line {line_no} has no key")
+            print(f"warning: event at line {line_no} has no key", file=sys.stderr)
+            continue
 
         fields = {name: value for name, value in event.items() if name != "op"}
         if op == "add":
@@ -40,7 +43,8 @@ def fold(path: Path) -> list[dict]:
         elif op == "close":
             active.pop(key, None)
         else:
-            raise ValueError(f"event at line {line_no} has unknown op")
+            print(f"warning: event at line {line_no} has unknown op", file=sys.stderr)
+            continue
 
     return list(active.values())
 

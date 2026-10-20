@@ -1,22 +1,40 @@
 <!-- sanitized template — 실제 값은 로컬 ROUTINE-CONFIG에서 주입된다. 원본은 비공개 워크스페이스에서 운영 중. -->
 # code-convention-digest
 
-이 프롬프트 본문은 automation 트리거가 이미 줬다. **이 파일을 다시 읽지 않고, 자기 지시를 `rg`·`grep`으로 검색하지 않는다.** 재읽기 한 번과 자기 검색 한 번이 회차 도구 출력의 54%였다(2026-09-16 실측 7,659토큰). **개인 메모리(`~/.devin/`·`~/.codex/memories/`)도 읽지 않는다** — 2026-09-17 07:20 회차가 첫 턴에 그것을 `rg`로 28,337자 올려 11턴 내내 다시 실었다. 무인 회차의 판단은 이 프롬프트와 `ROUTINE-CONFIG.md`만으로 한다.
+이 파일을 지금 읽은 것이 정상이다 — 트리거는 경로만 준다. **이 파일은 한 번만 읽고 다시 읽지 않고, 자기 지시를 `rg`·`grep`으로 검색하지 않는다.** 재읽기 한 번과 자기 검색 한 번이 회차 도구 출력의 54%였다(2026-09-16 실측 7,659토큰). **개인 메모리(`~/.devin/`·`~/.codex/memories/`)도 읽지 않는다** — 2026-09-17 07:20 회차가 첫 턴에 그것을 `rg`로 28,337자 올려 11턴 내내 다시 실었다. 무인 회차의 판단은 이 프롬프트와 `ROUTINE-CONFIG.md`만으로 한다.
 
 이 실행은 `state/code-quality-list.jsonl`에 등록된 해소된 지적만 군집화해 팀 컨벤션 승격 후보를 Slack DM으로 제안한다. 새 리뷰를 만들거나 lint·CI·리뷰 기준을 변경하지 않는다. `~/work/ROUTINE-CONFIG.md`에서 사용자 Slack ID와 필요한 좌표를 읽고 값은 하드코딩하지 않는다. `~/work/.legacy-routine-state/`와 `~/work/legacy-routines/`에는 쓰지 않는다.
 
-사내 레포의 읽기·fetch·clone·working tree 쓰기를 하지 않는다. **쓰기 직전의 lock check는 두 형태다.** 셸 명령인 쓰기(`bin/az`의 POST·PATCH·`set-vote`, 원장·worklist append, `state/deploy-approval-react.sh`, `pr-session.sh close`, `mark.py`)는 `bash bin/guarded.sh code-convention-digest "$TOKEN" run <명령…>` 또는 `bash bin/guarded.sh code-convention-digest "$TOKEN" append <파일> '<한 줄>'`로 실행한다 — 스크립트가 check를 먼저 하고 실패하면 명령을 실행하지 않고 exit 3으로 끝나며, 그때는 소유권을 잃은 것이니 그 자리에서 종료하고 상태 기록·commit·release를 시도하지 않는다. 셸 명령이 아닌 쓰기 — MCP 도구(Slack·Jira·Confluence)와 파일 도구로 덮어쓰는 `state/ask.*.md`·`state/ado-body.*.json` 같은 모든 `state/` 파일 — 는 직전에 `bash bin/lock.sh check code-convention-digest "$TOKEN"`을 따로 한다. **아래 본문의 'lock check 뒤'는 이 규칙대로 읽는다** — 셸 명령이면 guarded 한 번, 그 외면 check 한 번. 실행 수단이 무엇이든 `state/` 쓰기는 이 둘 중 하나다. **영속 셸에 보내는 명령은 판정까지 한 줄에 쓴다.** 영속 셸은 결과에 종료코드를 싣지 않는다. 다음 턴을 통째로 써서 `$?`를 읽으면 쓰기 하나가 4턴이 된다 — 2026-09-17 08:50 회차는 48호출 중 16(33%)이 종료코드 전용 턴이었다. `if bash bin/guarded.sh code-convention-digest "$TOKEN" run <명령…>; then print -r -- OK; else print -r -- FAIL; fi`처럼 **분기와 표식 출력을 같은 줄에** 넣는다. 전역 지침의 "`; echo $?`를 붙이지 마라"는 종료코드가 도구 결과에 그대로 실리는 단발 실행을 가리키며, 영속 셸에는 해당하지 않는다 — 여기서는 한 줄 안의 분기가 그 자리를 대신한다. 그 밖의 자리에서 `lock.sh check`를 부르지 않는다. 파일 생성·수정은 이 워크스페이스 안에서만 한다. `/tmp` 등 워크스페이스 밖 경로에 스크립트나 파일을 만들지 않는다. **파일을 지우지 않는다** — `rm`은 승인 프롬프트를 띄우고 무인 회차에는 답할 사람이 없어 그 자리에서 멈춘다. 재사용하는 파일은 덮어쓴다. **`git worktree`를 만들지 않고 빌드·테스트·패키지 매니저 명령(`mvn`·`gradle`·`npm`·`pytest` 등)을 실행하지 않는다.** 판정은 정적 읽기로만 한다 — 작업 사본을 만들면 정리가 필요해지고 그 정리가 다시 승인 프롬프트를 부른다.
+사내 레포의 읽기·fetch·clone·working tree 쓰기를 하지 않는다.
+**쓰기 직전의 lock check는 세 형태다.**
+셸 명령인 쓰기(`bin/az`의 POST·PATCH·`set-vote`, 원장·worklist append, `bin/deploy-approval-react.sh`, `mark.py`)는 `bash bin/guarded.sh code-convention-digest "$TOKEN" run <명령…>` 또는 `bash bin/guarded.sh code-convention-digest "$TOKEN" append <파일> '<한 줄>'`로 실행한다 — 스크립트가 check를 먼저 하고 실패하면 명령을 실행하지 않고 exit 3으로 끝나며, 그때는 소유권을 잃은 것이니 그 자리에서 종료하고 상태 기록·commit·release를 시도하지 않는다.
+매번 전체를 다시 쓰는 `state/` 파일은 `bash bin/guarded.sh code-convention-digest "$TOKEN" write <파일> <<'__BODY__'`에 이어 JSON 한 벌과 `__BODY__`를 넘기는 한 호출로 쓴다 — check가 그 안에 들어 있으므로 직전 check를 따로 하지 않고, 그 파일을 이 호출 바깥에서 리다이렉션이나 파일 도구로 먼저 열지도 않는다.
+그 외 셸 명령이 아닌 쓰기 — MCP 도구(Slack·Jira·Confluence) 호출과 파일 도구의 부분 수정 — 는 직전에 `bash bin/lock.sh check code-convention-digest "$TOKEN"`을 따로 한다.
+**아래 본문의 'lock check 뒤'는 이 규칙대로 읽는다** — 셸 명령이면 guarded 한 번, 전체 재작성 파일이면 write 한 번, 그 외면 check 한 번.
+실행 수단이 무엇이든 `state/` 쓰기는 이 셋 중 하나다.
+**영속 셸에 보내는 명령은 판정까지 한 줄에 쓴다.**
+영속 셸은 결과에 종료코드를 싣지 않는다.
+다음 턴을 통째로 써서 `$?`를 읽으면 쓰기 하나가 4턴이 된다 — 2026-09-17 08:50 회차는 48호출 중 16(33%)이 종료코드 전용 턴이었다.
+`if bash bin/guarded.sh code-convention-digest "$TOKEN" run <명령…>; then echo OK; else echo FAIL; fi`처럼 **분기와 표식 출력을 같은 줄에** 넣는다.
+전역 지침의 "`; echo $?`를 붙이지 마라"는 종료코드가 도구 결과에 그대로 실리는 단발 실행을 가리키며, 영속 셸에는 해당하지 않는다 — 여기서는 한 줄 안의 분기가 그 자리를 대신한다.
+그 밖의 자리에서 `lock.sh check`를 부르지 않는다.
+파일 생성·수정은 이 워크스페이스 안에서만 한다.
+`/tmp` 등 워크스페이스 밖 경로에 스크립트나 파일을 만들지 않는다.
+**파일을 지우지 않는다** — `rm`은 승인 프롬프트를 띄우고 무인 회차에는 답할 사람이 없어 그 자리에서 멈춘다.
+재사용하는 파일은 덮어쓴다.
+**`git worktree`를 만들지 않고 빌드·테스트·패키지 매니저 명령(`mvn`·`gradle`·`npm`·`pytest` 등)을 실행하지 않는다.**
+판정은 정적 읽기로만 한다 — 작업 사본을 만들면 정리가 필요해지고 그 정리가 다시 승인 프롬프트를 부른다.
 
-Slack 접근은 claude.ai Slack 커넥터 도구로만 하며 **도구 이름과 인자를 탐색하지 않는다** — 키워드로 찾으면 그 목록 전체가 컨텍스트에 남아 회차가 끝날 때까지 매 턴 다시 읽힌다. 도구가 목록에 없으면 `ToolSearch("select:mcp__claude_ai_Slack__slack_read_channel,mcp__claude_ai_Slack__slack_read_thread,mcp__claude_ai_Slack__slack_send_message")`를 **한 번만** 부르고, 그 뒤로는 아래 이름과 인자를 그대로 쓴다.
+Slack 접근은 Slack MCP 서버의 아래 도구만 쓰며 **도구 이름과 인자를 탐색하지 않는다** — 키워드로 찾으면 그 목록 전체가 컨텍스트에 남아 회차가 끝날 때까지 매 턴 다시 읽힌다. 호출 형식은 실행 프로바이더로 갈린다 — devin: `mcp_call_tool({server_name:"slack", tool_name:"<도구명>", arguments:{…}})`; claude.ai 커넥터: `mcp__claude_ai_Slack__<도구명>({…})`(커넥터 목록에 도구가 없으면 `ToolSearch("select:mcp__claude_ai_Slack__slack_read_channel,mcp__claude_ai_Slack__slack_read_thread,mcp__claude_ai_Slack__slack_send_message")`를 **한 번만** 부른다). 그 외 프로바이더에서는 그 환경의 MCP 호출 수단을 한 번 확인한 뒤 아래 이름과 인자를 그대로 쓴다.
 
-- 채널 읽기 `mcp__claude_ai_Slack__slack_read_channel({channel_id, oldest, latest, limit, response_format:"detailed"})`
-- 스레드 읽기 `mcp__claude_ai_Slack__slack_read_thread({channel_id, message_ts, oldest, limit, response_format:"detailed"})`
+- 채널 읽기 `slack_read_channel({channel_id, oldest, latest, limit, response_format:"detailed"})`
+- 스레드 읽기 `slack_read_thread({channel_id, message_ts, oldest, limit, response_format:"detailed"})`
 - 반응 확인 — 전용 도구가 없다. 위 두 읽기의 `response_format:"detailed"` 응답에 반응이 실리므로 그것으로 센다.
-- 답글·DM `mcp__claude_ai_Slack__slack_send_message({channel_id, thread_ts, message})`
+- 답글·DM `slack_send_message({channel_id, thread_ts, message})`
 
 **인자 이름은 `channel_id`와 `message_ts`다.** `channel`·`ts`·`thread_id`로 부르면 필수 인자 누락으로 거부되고, 첫 Slack 수집 실패는 회차 중단 사유라 그 회차가 통째로 버려진다. 본문 필드는 `text`가 아니라 `message`다.
 
-Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 않는다. 봇 ✅를 **다는** 것만 예외이며 그것은 `state/deploy-approval-react.sh` 헬퍼가 담당한다.
+Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 않는다. 봇 ✅를 **다는** 것만 예외이며 그것은 `bin/deploy-approval-react.sh` 헬퍼가 담당한다.
 
 
 **도구 이름을 모를 때만 탐색하고, 탐색은 이름만 뽑는다.** `ALL_TOOLS` 필터 결과를 도구 객체째로 출력하면 설명 필드까지 컨텍스트에 박혀 회차가 끝날 때까지 매 턴 다시 읽힌다(2026-09-15 실측: 한 번에 8,920토큰). `x.name`만 출력하고, 같은 회차에서 같은 탐색을 두 번 하지 않는다.
@@ -33,9 +51,9 @@ Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 �
 
 ## 2. 입력·군집화·DM
 
-ROUTINE-CONFIG를 읽어 해석한다. 상태 루트 또는 입력 파일을 읽을 수 없으면 대상 특정 전 실패로 보고하고 release만 실행한다. `state/code-quality-list.jsonl`이 없거나 비어 있으면 `누적된 해소 지적 로그 없음 — 이번 주 다이제스트 없음`으로 보고하고 종료한다. 이 경우 스킬을 읽지 않는다.
+ROUTINE-CONFIG를 읽어 해석한다. 상태 루트 또는 입력 파일을 읽을 수 없으면 `python3 bin/round.py finish code-convention-digest "$TOKEN"`를 **`--commit` 없이 한 번 실행한 뒤** 대상 특정 전 실패로 보고하고 종료한다. `state/code-quality-list.jsonl`이 없거나 비어 있으면 `누적된 해소 지적 로그 없음 — 이번 주 다이제스트 없음`으로 보고하고 `python3 bin/round.py finish code-convention-digest "$TOKEN"`를 **`--commit` 없이 한 번 실행한 뒤** 종료한다. 이 경우 스킬을 읽지 않는다.
 
-입력은 `occId`로 먼저 중복 제거한다. 같은 `occId`가 여러 줄이어도 하나의 occurrence로만 세며, rule of three의 빈도도 고유 `occId` 수만 쓴다. 이 원장은 읽기 전용이며 수정·압축·정리하지 않는다. 입력이 확인된 시점에 `~/work/harnie/skills/quality-digest/SKILL.md`를 읽어 군집화와 후보 선정 기준을 적용한다. 본문을 복사하지 않는다.
+입력에서 `outcome:"finding-retracted"`인 줄은 `occId` 중복 제거 전에 버리고 군집화·빈도에 세지 않는다. 입력은 `occId`로 먼저 중복 제거한다. 같은 `occId`가 여러 줄이어도 하나의 occurrence로만 세며, rule of three의 빈도도 고유 `occId` 수만 쓴다. 이 원장은 읽기 전용이며 수정·압축·정리하지 않는다. 입력이 확인된 시점에 `~/work/harnie/skills/quality-digest/SKILL.md`를 읽어 군집화와 후보 선정 기준을 적용한다. 본문을 복사하지 않는다.
 
 같은 안티패턴·반복 계약 위반·반복 누락을 의미 기준으로 묶고, 1회성·맥락 특수적인 지적은 제외한다. 고유 occurrence 3건 미만 군집은 후보로 승격하지 않는다. 후보마다 대표 예시 2~3개(`project/repository#PR: 요약`), 빈도, 가장 적합한 `lint|CI|criteria` 메커니즘 하나, false-positive 위험을 정리한다. 특정 lint 규칙·설정 스니펫을 만들거나 레포 설정을 읽지 않는다.
 
@@ -43,7 +61,7 @@ ROUTINE-CONFIG를 읽어 해석한다. 상태 루트 또는 입력 파일을 읽
 
 발송 대상이 있으면 한국어 DM을 작성한다. 제목은 `이번 주 팀 컨벤션 승격 후보`이며 후보별 문제 요약, 대표 예시, 빈도, 제안 메커니즘, false-positive 위험을 간결히 쓴다. 신규과 재노출 후보 및 재노출 횟수를 구분하고, 채택은 사용자 선택이며 자동 반영하지 않는다고 명시한다. 라이브에서는 lock check 뒤 `slack_send_message`로 ROUTINE-CONFIG의 사용자 Slack user ID를 channel로 사용해 DM을 보낸다. 응답 TS를 얻은 각 발송 후보만 `exposureCount`를 1 증가시키고 `lastExposedAt`, `lastMessageTs`를 갱신한다.
 
-adopted·expired 판정만 있고 발송 대상이 없더라도 라이브에서는 그 상태 변경을 반영한다. 상태 배열을 바꿀 때는 lock check 뒤 tmp 파일 후 원자 교체로 `state/code-quality-exposure.json`만 쓴다. `code-quality-list.jsonl`은 어떤 경우에도 쓰지 않는다. dry-run에서는 DM 전문과 상태 변경 예정만 보고한다.
+adopted·expired 판정만 있고 발송 대상이 없더라도 라이브에서는 그 상태 변경을 반영한다. 상태 배열을 바꿀 때는 `bash bin/guarded.sh code-convention-digest "$TOKEN" write state/code-quality-exposure.json <<'__BODY__'`에 이어 JSON 전체와 `__BODY__`를 넘기는 한 호출로 `state/code-quality-exposure.json`만 쓴다 — check와 원자 교체가 그 안에 있다. `code-quality-list.jsonl`은 어떤 경우에도 쓰지 않는다. dry-run에서는 DM 전문과 상태 변경 예정만 보고한다.
 
 ## 3. 상태 기록
 
@@ -51,6 +69,6 @@ adopted·expired 판정만 있고 발송 대상이 없더라도 라이브에서�
 
 ## 4. 회차 종료와 보고
 
-정상 경로에서는 `python3 bin/round.py finish code-convention-digest "$TOKEN"`를 **한 번** 실행한다. 스크립트가 lock check → 락 해제를 한 번에 처리한다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`·`pr-session.sh sweep`을 따로 부르지 않는다.
+정상 경로에서는 `python3 bin/round.py finish code-convention-digest "$TOKEN"`를 **한 번** 실행한다. 스크립트가 lock check → 락 해제를 한 번에 처리한다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`을 따로 부르지 않는다.
 
 한국어 보고에는 고유 occurrence 수, 군집 수와 rule-of-three 미달 수, 신규·재노출 후보와 노출 횟수, adopted·expired, DM 발송과 요지, exposure 저장 여부, dry-run 수행 예정과 실패 단계를 포함한다.
