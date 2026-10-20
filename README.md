@@ -10,16 +10,19 @@ Claude Code와 Codex를 **하나의 지침 체계로 묶어 운영**하는 개�
 
 ```
 claude/
-├── CLAUDE.md        # 전역 지침 정본(영문) — Claude(~/.claude/CLAUDE.md)와 Codex(~/.codex/AGENTS.md)가 심링크로 공유
+├── AGENTS.md        # 전역 지침 정본(영문) — Codex(~/.codex/AGENTS.md)가 심링크로 읽는다
+├── CLAUDE.md        # `@AGENTS.md` import 한 줄 — Claude Code(~/.claude/CLAUDE.md)가 심링크로 읽는다
 ├── delegation.md    # 위임·모델 티어 매칭 규칙 (on-demand 로드)
+├── orca-dispatch.md # 병렬 유닛 디스패치 — orca 워크트리·터미널·머지·정리 절차 (on-demand)
+├── agent-teams.md   # 에이전트 간 토론·경쟁 가설이 필요한 단계의 팀 운영 규칙 (on-demand)
 ├── permissions.md   # 라우팅된 워크플로가 전제하는 Claude Code allow 규칙과 그 범위 근거
 └── codex-hooks.json # Codex 쪽 훅 등록 조각 (routine-sync)
 guidelines/
 └── GIT.md           # 커밋·푸시·PR 라우팅 (회사/개인 컨텍스트 자동 판별)
 routines/
 ├── README.md        # orca automation + precheck 게이트 루틴 아키텍처 (핵심 문서)
-├── prompts/         # automation 6종 지시서 (새니타이즈 템플릿)
-├── bin/             # 게이트·회차·락·워커 세션 스크립트
+├── prompts/         # automation 7종 지시서 (새니타이즈 템플릿)
+├── bin/             # 게이트·회차·락·터미널 회수·토큰 관측 스크립트
 └── templates/       # ROUTINE-CONFIG 필드 구조
 scripts/
 ├── sanitize.py      # 라이브 루틴 문서 → 템플릿 결정적 치환 + 유출 검사 내장 (실패 시 exit 1)
@@ -37,10 +40,10 @@ PreToolUse deny 훅(복합 명령 차단·Grep→rg 유도)은 2026-09-08에 제
 
 ## 설계 원칙
 
-1. **정본은 하나, 사본은 없다** — 지침은 이 레포의 파일이 유일한 정본이고, 각 도구는 심링크·절대경로 참조로 같은 파일을 읽는다. "가져오기"식 스냅샷 복사는 드리프트를 만들기 때문에 쓰지 않는다.
+1. **정본은 하나, 사본은 없다** — 지침은 이 레포의 `claude/AGENTS.md`가 유일한 정본이고, Codex는 그 파일을 심링크로, Claude Code는 `@AGENTS.md` 한 줄짜리 `CLAUDE.md`를 심링크로 읽는다. "가져오기"식 스냅샷 복사는 드리프트를 만들기 때문에 쓰지 않는다.
 2. **도구 중립 코어 + 도구 전용 마킹** — 공통 지침은 그대로 두 도구에 적용되고, 한쪽에만 유효한 절은 `[Claude Code only]`처럼 명시해 다른 쪽이 무시한다.
 3. **영문 정본 + 요청 시 한국어 미러** — 지침 문서는 영문(`*.md`)이 실행 정본이고, 한국어 미러(`*-ko.md`)는 **사람이 명시 요청할 때만** 갱신한다(2026-08-27 전환, harnie와 동일한 언어 정책). 미러가 정본보다 뒤처진 상태로 남는 것이 정상이며 세션이 자동 동기화하지 않는다 — 동시 갱신 의무는 유지비를 두 배로 만들면서 런타임에는 값을 주지 않았다(로드되는 것은 영문뿐이다). 영문 정본을 삭제할 때만 대응 미러를 함께 지운다.
-4. **판단 기준의 SSOT는 harnie** — 개발 체인 6단계(요구사항·설계·설계리뷰·구현·구현리뷰·검증)와 PR 리뷰 기준(pr-review)은 harnie 스킬이 정본이고, 여기의 지침은 그 스킬로 라우팅만 한다. 같은 기준을 사람 요청·자동 루틴·개발 체인이 전부 공유한다.
+4. **판단 기준의 SSOT는 harnie** — 개발 체인 6단계(요구사항·설계·설계리뷰·구현·구현리뷰·검증)와 PR 리뷰 기준(pr-review)은 harnie 스킬이 정본이고, 여기의 지침은 그 스킬로 라우팅만 한다. 코드 리뷰 요청은 계약(설계·요청) 유무로 `implementation-review`와 `pr-review`로 갈린다. 같은 기준을 사람 요청·자동 루틴·개발 체인이 전부 공유한다.
 5. **토큰 경제** — 상시 로드되는 지침은 얇게, 상세 규칙은 트리거 시에만 읽는 on-demand 문서로. 자동 루틴은 결정적 작업을 precheck(Python, 토큰 0)로 빼 세션의 **턴 수**를 줄인다 — 세션이 도구를 부를 때마다 컨텍스트가 다시 실리므로 비용을 정하는 것은 읽는 양이 아니라 턴이다. → [routines/README.md](routines/README.md)
 6. **공개 가능한 구조** — 지시서에 식별값을 하드코딩하지 않고 실행 시 주입(ROUTINE-CONFIG)하므로, 운영 문서를 거의 그대로 템플릿으로 공개할 수 있다. 회사 내부 정보(도메인 맵·문제 인벤토리 등)는 이 레포 밖 로컬에만 둔다.
 
@@ -55,7 +58,7 @@ ln -sf ~/workspace/agent-ops/claude/CLAUDE.md ~/.claude/CLAUDE.md
 ```
 
 ```bash
-ln -sf ~/workspace/agent-ops/claude/CLAUDE.md ~/.codex/AGENTS.md
+ln -sf ~/workspace/agent-ops/claude/AGENTS.md ~/.codex/AGENTS.md
 ```
 
 훅까지 켜려면 추가로:
