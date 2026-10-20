@@ -33,8 +33,11 @@ MAP_PATH = pathlib.Path(os.environ.get("AGENT_OPS_SANITIZE_MAP")
                         or pathlib.Path.home() / ".config" / "agent-ops" / "sanitize-map.json")
 
 SCRIPTS = ["precheck.py", "precheck.sh", "round.py", "guarded.sh", "mark.py", "prior-review.py",
-           "pr-session.sh", "lock.sh", "az", "fold-worklist.py", "create-automations.sh",
-           "fetch-repos.sh", "seed-azure.sh", "token-report.py"]
+           "lock.sh", "az", "fold-worklist.py", "fetch-repos.sh", "seed-azure.sh",
+           "reap-run-terminals.py", "qa-deploy-react.sh",
+           "token-report.py", "token-breakdown.py", "token-incidents.py"]
+# 프롬프트가 `--in-file bin/body/*.json`으로 가리키는 고정 요청 본문.
+BODIES = ["thread-active.json", "thread-closed.json", "thread-fixed.json"]
 
 # 형태만 보는 검사. 회사 문자열은 비공개 맵의 deny가 맡는다.
 LEAK = [
@@ -59,18 +62,11 @@ DROP = {
                      '    return pr_review_merged_gate()')],
     "round.py": [('    "dp-report-draft":        dict(gated=False, ado=False, bot=False, worklist=None),\n'
                   '    "dp-report-sprint":       dict(gated=False, ado=False, bot=False, worklist=None),\n', '')],
-    "create-automations.sh": [("# orca automation 8개를", "# orca automation 6개를"),
-                              ("# 날짜·파일만 보는 셋은 기본 60초로 충분하다.\n"
-                               "mk code-convention-digest  '0 8 * * 5'         none\n"
-                               "mk dp-report-draft         '0 13 * * 4'        -\n"
-                               "mk dp-report-sprint        '0 16 * * 4'        -\n",
-                               "# 파일만 보는 하나는 precheck를 붙이지 않는다.\n"
-                               "mk code-convention-digest  '0 8 * * 5'         none\n")],
-    "az": [("automation 8개가 공유한다", "automation 6개가 공유한다")],
+    "az": [("automation 8개가 공유한다", "automation 7개가 공유한다")],
 }
 DROP_REGEX = {"precheck.py": [(re.compile(r"def parity_gate\(\).*?\n\n\ndef decide", re.S), "def decide")]}
 # 제외한 프롬프트의 이름이 산출물에 남으면 안 된다.
-DROP_CHECK = re.compile(r"dp-report")
+DROP_CHECK = re.compile(r"dp-report|lunch")
 
 MD_HEADER = ("<!-- sanitized template — 실제 값은 로컬 ROUTINE-CONFIG에서 주입된다. "
              "원본은 비공개 워크스페이스에서 운영 중. -->\n")
@@ -126,6 +122,12 @@ def main() -> int:
         dst = OUT / "bin" / name
         dst.write_text("\n".join(lines), encoding="utf-8")
         dst.chmod(src.stat().st_mode)
+        written.append(dst)
+
+    (OUT / "bin" / "body").mkdir()
+    for name in BODIES:
+        dst = OUT / "bin" / "body" / name
+        shutil.copyfile(live / "bin" / "body" / name, dst)
         written.append(dst)
 
     for src in sorted((live / "prompts").glob("*.md")):
