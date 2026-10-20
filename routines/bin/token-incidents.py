@@ -27,6 +27,7 @@ import re
 import sys
 
 CODEX = os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")
+CODEX_ARCHIVED = os.path.expanduser("~/.codex/archived_sessions/*.jsonl")
 CLAUDE = os.path.expanduser("~/.claude/projects/-Users-<user>-work-orca-automations/*.jsonl")
 DEVIN = os.path.expanduser("~/.local/share/devin/cli/transcripts/*.json")
 ROOT = "~/work/orca-automations"
@@ -102,6 +103,15 @@ def matched(pattern, label):
     if not paths:
         print(f"경고: {label} 전사 glob이 0건이다 — {pattern}", file=sys.stderr)
     return paths
+
+
+def codex_paths():
+    """codex는 끝난 세션을 `archived_sessions/`로 옮긴다. 옮기는 도중 양쪽에 같은
+    파일명이 보이면 `sessions/` 쪽 하나만 센다."""
+    paths = {}
+    for path in matched(CODEX_ARCHIVED, "codex 보관") + matched(CODEX, "codex"):
+        paths[os.path.basename(path)] = path
+    return list(paths.values())
 
 
 def session_cwd(path):
@@ -204,7 +214,7 @@ def rounds_codex(since, until):
     out = []
     failures = collections.Counter()
     detail = []
-    for path in sorted(matched(CODEX, "codex")):
+    for path in sorted(codex_paths()):
         if os.path.getmtime(path) < since:
             continue
         if session_cwd(path) != ROOT:
@@ -413,7 +423,7 @@ def refusals(since, until):
 def limits(since, until):
     """가장 최근 `rate_limits` 기록과 구간 양 끝의 크레딧 잔액."""
     seen = []
-    for path in matched(CODEX, "codex"):
+    for path in codex_paths():
         if os.path.getmtime(path) < since:
             continue
         for line in open(path):

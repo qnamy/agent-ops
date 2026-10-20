@@ -36,6 +36,7 @@ import re
 import sys
 
 CODEX = os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")
+CODEX_ARCHIVED = os.path.expanduser("~/.codex/archived_sessions/*.jsonl")
 CLAUDE = os.path.expanduser("~/.claude/projects/-Users-<user>-work-orca-automations/*.jsonl")
 DEVIN = os.path.expanduser("~/.local/share/devin/cli/transcripts/*.json")
 # cwd는 정확히 대조한다. 부분 일치로 고르면 같은 레포의 다른 워크트리 세션이
@@ -123,6 +124,15 @@ def matched(pattern, label):
     return paths
 
 
+def codex_paths():
+    """codex는 끝난 세션을 `archived_sessions/`로 옮긴다. 옮기는 도중 양쪽에 같은
+    파일명이 보이면 `sessions/` 쪽 하나만 센다."""
+    paths = {}
+    for path in matched(CODEX_ARCHIVED, "codex 보관") + matched(CODEX, "codex"):
+        paths[os.path.basename(path)] = path
+    return list(paths.values())
+
+
 def role_of(opener):
     """첫 사용자 입력으로 회차·워커·사람을 가른다."""
     if opener and TRIGGER.search(opener):
@@ -139,7 +149,7 @@ def scan_codex(since, until, orchestrator, human):
     띄운 적이 없으므로 루틴이 만드는 codex 워커가 없다. 갈래를 남기면 PR 번호가
     섞인 사람 세션만 거기 들어가 사람 비용이 워커로 계상된다.
     """
-    for path in matched(CODEX, "codex"):
+    for path in codex_paths():
         if os.path.getmtime(path) < since:
             continue
         cwd = None

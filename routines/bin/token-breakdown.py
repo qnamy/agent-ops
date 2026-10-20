@@ -35,6 +35,7 @@ import re
 import sys
 
 CODEX = os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")
+CODEX_ARCHIVED = os.path.expanduser("~/.codex/archived_sessions/*.jsonl")
 DEVIN = os.path.expanduser("~/.local/share/devin/cli/transcripts/*.json")
 ROOT = "~/work/orca-automations"
 # 회차는 시작 명령을 **실행한** 세션이다. 도구호출 인자 전체를 보면 안 된다 —
@@ -196,6 +197,15 @@ def matched(pattern, label):
     return paths
 
 
+def codex_paths():
+    """codex는 끝난 세션을 `archived_sessions/`로 옮긴다. 옮기는 도중 양쪽에 같은
+    파일명이 보이면 `sessions/` 쪽 하나만 센다."""
+    paths = {}
+    for path in matched(CODEX_ARCHIVED, "codex 보관") + matched(CODEX, "codex"):
+        paths[os.path.basename(path)] = path
+    return list(paths.values())
+
+
 def devin_text(message):
     """Devin 스텝 본문. 텍스트+이미지 입력은 파트 리스트로 남는다."""
     if isinstance(message, list):
@@ -220,7 +230,7 @@ def devin_opener_and_cwd(steps):
 
 def scan_codex(since, until, calls, tokens):
     sessions = 0
-    for path in sorted(matched(CODEX, "codex")):
+    for path in sorted(codex_paths()):
         if os.path.getmtime(path) < since:
             continue
         if session_cwd(path) != ROOT:
