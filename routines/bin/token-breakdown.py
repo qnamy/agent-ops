@@ -106,6 +106,7 @@ RULES = [
     ("원장(handoff)", lambda t, c, a: "handoff/" in c),
     ("ROUTINE-CONFIG 읽기", lambda t, c, a: "ROUTINE-CONFIG" in c),
     ("회사 PR 절차 읽기", lambda t, c, a: "PR-ADO.md" in c),
+    ("에이전트 작업 배정", lambda t, c, a: re.search(r'"task_name"\s*:', a)),
     ("prior-review.py", lambda t, c, a: "prior-review.py" in c),
     # `.*`에 re.S를 켠다 — `python3 - <<'EOF' … open('state/…')`처럼 heredoc
     # 본문 뒤쪽 줄에 state/가 오는 호출이 빠졌다(09-25 code-convention-digest).
@@ -123,8 +124,9 @@ RULES = [
     ("검색", lambda t, c, a: t in ("grep", "find_file_by_name")),
     ("루틴코드 읽기", lambda t, c, a: (
         (t == "read" and "/bin/" in c)
-        or re.search(r"(?<![\w-])(?:cat|sed|awk|head|tail|grep|rg|ls|wc)\b.*\bbin/", c)
+        or re.search(r"(?<![\w-])(?:cat|sed|awk|head|tail|grep|rg|ls|wc)\b.*\bbin(?:/|(?=\s|$))", c)
     )),
+    ("컨텍스트 가공", lambda t, c, a: re.search(r"\b(?:load|store)\(", c)),
     ("관측도구 실행", lambda t, c, a: re.search(r"\bbin/token-", c)),
     ("git 조회", lambda t, c, a: re.search(r"\bgit\b", c)),
     # `date`는 명령 경계에서만 본다 — `git log --date=…`의 `--date`는 앞글자가
