@@ -13,15 +13,17 @@ Turn a unit list into running sessions with the intended model and effort, and m
 
   ```
   orca worktree create --repo name:<repo> --name <unit> --base-branch main --no-parent --json
-  orca terminal create --worktree name:<unit> --command 'claude --model <alias> --effort <low|medium|high|xhigh|max> "<instruction>"' --json
+  orca terminal create --worktree name:<unit> --command 'claude --dangerously-skip-permissions --model <alias> --effort <low|medium|high|xhigh|max> "<instruction>"' --json
   ```
 
   For Codex, use the equivalent explicit command:
 
   ```
   orca worktree create --repo name:<repo> --name <unit> --base-branch main --no-parent --json
-  orca terminal create --worktree name:<unit> --command 'codex exec -m <model> -s workspace-write -c model_reasoning_effort="<level>" "<instruction>"' --json
+  orca terminal create --worktree name:<unit> --command 'codex exec --dangerously-bypass-approvals-and-sandbox -m <model> -c model_reasoning_effort="<level>" "<instruction>"' --json
   ```
+
+  **Every session orca opens runs in bypass mode** — the unit, reviewer, and verifier sessions alike, headless or interactive: Claude with `--dangerously-skip-permissions`, Codex with `--dangerously-bypass-approvals-and-sandbox` (this Codex build has no `--yolo` alias). An unanswered approval prompt stalls the session, and the coordinator cannot answer it on the session's behalf. What this gives up: no permission check and, for Codex, no sandbox, so a session can write outside its worktree and run any command; the worktree boundary and every "write only X" rule below rest on the instruction text alone. Drop the flag only for a session the user asked to keep supervised.
 
   Headless `codex exec` skill loading has not been measured — use an interactive Codex session for a handoff that needs that guarantee.
 
@@ -31,9 +33,9 @@ Turn a unit list into running sessions with the intended model and effort, and m
   - **Turn completion.** `notify = ["<program>", ...]` in `~/.codex/config.toml` fires an external program on `agent-turn-complete` with a JSON payload (`thread-id`, `turn-id`, `cwd`, `last-assistant-message`). It is the only event `notify` supports — it says nothing about starts or approval waits.
   - **Full state, including approvals.** `codex app-server --listen ws://127.0.0.1:<port>` plus `codex --remote ws://127.0.0.1:<port>` exposes `turn/started`, `turn/completed`, `thread/status/changed`, and unresolved `item/*/requestApproval` requests over JSON-RPC. The client must be attached from session start; attaching to an already-running TUI is not supported.
 
-  **Approval prompts**: `-a never` (`--ask-for-approval never`, or `approval_policy = "never"`) suppresses them, but under Codex's `workspace-write` sandbox any git metadata write then fails: the sandbox denies writes under `.git/` even inside the workspace, so `git add`/`git commit` fail with `Operation not permitted`. Probed 2026-08-31: `os.tmpdir()` writes are allowed and relocating the git index does not help — the denial is the object database, and it reproduces in an ordinary repo as well as a linked worktree. So a Codex session that must commit runs with approvals **on**, one prompt per new command prefix; `-a never` fits read-and-write-files sessions such as a chain reviewer (it writes only into `_chain/`) or a researcher. Opening `.git` through `writable_roots` would work but unlocks what the sandbox protects — not recommended.
+  **Why Codex bypasses the sandbox, not just approvals**: `-a never` alone keeps the `workspace-write` sandbox, and that sandbox denies writes under `.git/` even inside the workspace, so `git add`/`git commit` fail with `Operation not permitted`. Probed 2026-08-31: `os.tmpdir()` writes are allowed and relocating the git index does not help — the denial is the object database, and it reproduces in an ordinary repo as well as a linked worktree. `--dangerously-bypass-approvals-and-sandbox` removes both, so a unit session can commit without prompts.
 
-  **Chain reviewer sessions**: open the other provider's interactive session in the same worktree and tell it to act as the review skill's reviewer. Give it the narrowest write surface the runtime offers, and name honestly what that buys. For Codex, `workspace-write` — there is no per-directory allowlist, and `read-only` would block the result file, so the "results only" rule rests on the skill text. For Claude, `--permission-mode dontAsk` with a scoped `Edit`/`Write` allow on `_chain/` restricts the file tools only when no broader allow rule is inherited from settings and Bash and MCP writes are closed separately; short of all three, the session runs on the skill's rule alone, and it is not a guard. Exchange request and result as files under `_chain/`.
+  **Chain reviewer sessions**: open the other provider's interactive session in the same worktree, in bypass mode like every other session, and tell it to act as the review skill's reviewer. Under bypass the reviewer has full write access; the "results only into `_chain/`" rule rests on the skill text, and it is not a guard. Exchange request and result as files under `_chain/`.
 
 - **Pass the prompt by reference, not by value.** Write the unit instructions to a file and tell the session to read its section ("read <file>, do the §U3 card"). Long prompts through `--prompt`/`--text` break on shell quoting, and a referenced prompt picks up edits on redispatch.
 - **Push with `git push origin HEAD:main`.** A linked worktree cannot `git switch main` — the main checkout holds that branch.
