@@ -14,7 +14,6 @@ claude/
 ├── CLAUDE.md        # `@AGENTS.md` import 한 줄 — Claude Code(~/.claude/CLAUDE.md)가 심링크로 읽는다
 ├── delegation.md    # 위임·모델 티어 매칭 규칙 (on-demand 로드)
 ├── orca-dispatch.md # 병렬 유닛 디스패치 — orca 워크트리·터미널·머지·정리 절차 (on-demand)
-├── agent-teams.md   # 에이전트 간 토론·경쟁 가설이 필요한 단계의 팀 운영 규칙 (on-demand)
 ├── permissions.md   # 라우팅된 워크플로가 전제하는 Claude Code allow 규칙과 그 범위 근거
 └── codex-hooks.json # Codex 쪽 훅 등록 조각 (routine-sync)
 guidelines/
