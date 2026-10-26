@@ -30,7 +30,7 @@ Slack 접근은 Slack MCP 서버의 아래 도구만 쓰며 **도구 이름과 �
 
 - 채널 읽기 `slack_read_channel({channel_id, oldest, latest, limit, response_format:"detailed"})`
 - 스레드 읽기 `slack_read_thread({channel_id, message_ts, oldest, limit, response_format:"detailed"})`
-- 반응 확인 — 전용 도구가 없다. 위 두 읽기의 `response_format:"detailed"` 응답에 반응이 실리므로 그것으로 센다.
+- 반응 확인 — 위 두 읽기의 `response_format:"detailed"` 응답에서 봇 ✅ 여부를 확인한다.
 - 답글·DM `slack_send_message({channel_id, thread_ts, message})`
 
 **인자 이름은 `channel_id`와 `message_ts`다.** `channel`·`ts`·`thread_id`로 부르면 필수 인자 누락으로 거부되고, 첫 Slack 수집 실패는 회차 중단 사유라 그 회차가 통째로 버려진다. 본문 필드는 `text`가 아니라 `message`다.
@@ -75,7 +75,7 @@ oldest = min(runStartedEpoch - 1200, lastRunTs - 600)
 oldest = max(oldest, runStartedEpoch - 345600)
 ```
 
-Slack 읽기는 ROUTINE-CONFIG의 `#deploy-approval` 채널에서 `oldest`를 기준으로 페이지네이션한다. 최신 30개로 자르지 말고, 창 안의 모든 페이지를 읽을 때까지 계속한다. **`context`의 `slackFloor`가 있으면 그 ts 이하의 메시지는 대상에서 제외한다** — 그 경계 아래는 게이트가 처리 완료로 기록한 구간이다. raw 수집이 0건이면 0건 가드로 `lastRunTs`를 전진시키지 않고 보고한다. raw 메시지는 있었지만 필터 후 대상이 0건인 것은 정상 성공이다. 메시지 TS가 창 안이고, 대상 멘션 하나 이상, Jira 티켓 링크 하나 이상, 배포 승인 취지, 본인·봇 이외 작성자를 모두 만족한 메시지만 대상으로 삼는다. 각 메시지에서 모든 Jira KEY와 직접 PR URL이 있으면 그 URL을 보관한다.
+Slack 읽기는 ROUTINE-CONFIG의 `#deploy-approval` 채널에서 `oldest`를 기준으로 페이지네이션한다. 최신 30개로 자르지 말고, 창 안의 모든 페이지를 읽을 때까지 계속한다. **`context`의 `slackFloor`가 있으면 그 ts 이하의 메시지는 대상에서 제외한다** — 그 경계 아래는 게이트가 처리 완료로 기록한 구간이다. raw 수집이 0건이면 0건 가드로 `lastRunTs`를 전진시키지 않고 보고한다. raw 메시지는 있었지만 필터 후 대상이 0건인 것은 정상 성공이다. 메시지 TS가 창 안이고, 대상 멘션 하나 이상, Jira 티켓 링크 하나 이상, 배포 승인 취지, 봇 이외 작성자를 모두 만족한 메시지만 대상으로 삼는다. 각 메시지에서 모든 Jira KEY와 직접 PR URL이 있으면 그 URL을 보관한다.
 
 활성 보류 집합은 `begin` JSON의 `worklist`다 — 폴드를 다시 하지 않는다. 봇이 이미 ✅를 달았거나 활성 worklist에 같은 `"<channel>/<messageTs>"` key가 있거나 멱등 마커 보류 답글이 있으면 신규 수집 경로에서 제외한다.
 
@@ -99,9 +99,9 @@ Slack 읽기는 ROUTINE-CONFIG의 `#deploy-approval` 채널에서 `oldest`를 �
 
 `review-issue` 보류에서는 라이브의 lock check 뒤 지적 요약과 멱등 마커를 스레드에 한 번 남기고, 답글 성공 여부와 무관하게 같은 형식의 worklist `add`를 append한다. PR 간 상충도 새 유형 없이 `review-issue`로 기록하며 `holdReason`과 답글에 상충 PR 쌍·내용(순서 의존이면 안전한 순서)을 적는다. PR별 답글·ADO 조회·로컬 읽기·worklist 기록 실패는 해당 메시지만 미처리로 남기고 다음 메시지를 계속 처리한다.
 
-판정 통과 메시지에는 라이브에서 lock check 뒤 `sh bin/deploy-approval-react.sh <deploy_approval_channel> <messageTs>`를 실행한다. `slack_add_reaction`을 사용하지 않는다. `already_reacted`는 멱등 성공이며 토큰과 응답의 민감한 값을 보고하지 않는다. 채널을 다시 조회해 ✅ 총수를 센다. N이 2 미만이면 추적·답글 없이 끝낸다.
+판정 통과 메시지에는 라이브에서 lock check 뒤 `sh bin/deploy-approval-react.sh <deploy_approval_channel> <messageTs>`를 실행한다. `slack_add_reaction`을 사용하지 않는다. `already_reacted`는 멱등 성공이며 토큰과 응답의 민감한 값을 보고하지 않는다. 실패하면 전이하지 않고 메시지를 미처리로 남긴다.
 
-N이 2 이상이면 연결된 모든 Jira 티켓의 상태와 가능한 전이를 조회한다. 상태명과 전이명은 공백을 제거해 목표 상태 `배포승인`과 비교한다. 이미 목표 상태 또는 그 이후·완료이면 멱등 성공이다. 목표 상태로 가는 전이가 있으면 lock check 뒤 전이한다. 전이가 없거나 일부 티켓 전이에 실패하면 우회하지 않고 `jira-transition`으로 보류한다. 라이브에서 lock check 뒤 사유와 멱등 마커를 스레드에 남기고, 답글 실패와 무관하게 hold 스키마 전체를 가진 worklist `add`를 append한다. 모든 연결 티켓이 목표 상태에 도달하면 댓글 없이 성공으로 끝낸다.
+봇 ✅ 성공 직후 연결된 모든 Jira 티켓의 상태와 가능한 전이를 조회한다. 상태명과 전이명은 공백을 제거해 목표 상태 `배포승인`과 비교한다. 이미 목표 상태 또는 그 이후·완료이면 멱등 성공이다. 목표 상태로 가는 전이가 있으면 lock check 뒤 전이한다. 전이가 없거나 일부 티켓 전이에 실패하면 우회하지 않고 `jira-transition`으로 보류한다. 라이브에서 lock check 뒤 사유와 멱등 마커를 스레드에 남기고, 답글 실패와 무관하게 hold 스키마 전체를 가진 worklist `add`를 append한다. 모든 연결 티켓이 목표 상태에 도달하면 댓글 없이 성공으로 끝낸다.
 
 PR별·PR 간 판정 중 하나라도 `commitPresent:false`가 나오면 뒤처진 commit으로 판정하지 않는다. 라이브에서 lock check 뒤 `state/fetch-queue`에 부재한 각 레포 이름을 한 줄씩 append하고, 다른 PR이 통과했거나 보류여도 해당 메시지는 미처리로 남겨 ✅를 달지 않은 뒤 다음 메시지를 계속 처리한다. fetch·clone은 하지 않는다.
 
@@ -115,7 +115,7 @@ raw 수집이 0건이 아니고 모든 대상이 성공했으며 라이브일 �
 
 정상 경로에서는 `python3 bin/round.py finish deploy-approve-intake "$TOKEN" [--commit]`를 **한 번** 실행한다. 스크립트가 lock check → 게이트 commit → 락 해제를 한 번에 처리한다. `--commit`은 모든 대상과 상태 기록이 성공했고 라이브일 때만 붙인다. dry-run, raw 0건 가드, 미처리 대상, 또는 상태 기록 실패에서는 commit하지 않는다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`을 따로 부르지 않는다.
 
-한국어 보고에는 조회 창·96시간 캡·페이지 수·raw 0건 여부, `begin`이 `worklistSkipped`를 돌려줬으면 건너뛴 깨진 줄 수, 감지·제외·미처리 메시지와 사유, 메시지별 수집 PR 수·PR 간 상충 판정 결과(대상 아님/통과/보류 사유), PR 특정·기존 리뷰 스킵·새 커밋 검토·보류 유형, 봇 ✅·반응 수·Jira 전이·worklist·fetch queue·mark·commit 여부와 dry-run 수행 예정 목록을 남긴다. 크리덴셜은 보고하지 않는다.
+한국어 보고에는 조회 창·96시간 캡·페이지 수·raw 0건 여부, `begin`이 `worklistSkipped`를 돌려줬으면 건너뛴 깨진 줄 수, 감지·제외·미처리 메시지와 사유, 본인 요청 처리 여부, 메시지별 수집 PR 수·PR 간 상충 판정 결과(대상 아님/통과/보류 사유), PR 특정·기존 리뷰 스킵·새 커밋 검토·보류 유형, 봇 ✅·Jira 전이·worklist·fetch queue·mark·commit 여부와 dry-run 수행 예정 목록을 남긴다. 크리덴셜은 보고하지 않는다.
 
 ## 보류 등록의 고정 규칙
 

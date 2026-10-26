@@ -30,7 +30,7 @@ Slack 접근은 Slack MCP 서버의 아래 도구만 쓰며 **도구 이름과 �
 
 - 채널 읽기 `slack_read_channel({channel_id, oldest, latest, limit, response_format:"detailed"})`
 - 스레드 읽기 `slack_read_thread({channel_id, message_ts, oldest, limit, response_format:"detailed"})`
-- 반응 확인 — 전용 도구가 없다. 위 두 읽기의 `response_format:"detailed"` 응답에 반응이 실리므로 그것으로 센다.
+- 반응 확인 — 위 두 읽기의 `response_format:"detailed"` 응답에서 봇 ✅ 여부를 확인한다.
 - 답글·DM `slack_send_message({channel_id, thread_ts, message})`
 
 **인자 이름은 `channel_id`와 `message_ts`다.** `channel`·`ts`·`thread_id`로 부르면 필수 인자 누락으로 거부되고, 첫 Slack 수집 실패는 회차 중단 사유라 그 회차가 통째로 버려진다. 본문 필드는 `text`가 아니라 `message`다.
@@ -70,7 +70,7 @@ ROUTINE-CONFIG를 읽어 해석한다(Jira·멱등 마커는 맥락에 없다). 
 
 활성 집합은 `begin` JSON의 `worklist`다. 빈 집합은 성공한 no-op이며 `python3 bin/round.py finish deploy-approve-resolve "$TOKEN"`를 **`--commit` 없이 한 번 실행하고 종료한다**. 각 항목을 순차 처리한다. `heldAt`이 7일을 초과하면 라이브에서 lock check 뒤 `ts`, `op:"close"`, `key`, `by:"deploy-approve-resolve"`, `reason:"expired"`를 append한다. 스레드 답글은 남기지 않는다.
 
-보류 3종(`review-issue`, `pr-not-found`, `jira-transition`)은 Slack 스레드를 읽어 `lastCheckedTs` 이후 새 답글을 확인한다. 내 멱등 마커 답글과 봇 메시지는 해소 근거에서 제외한다. 첫 Slack 읽기 실패는 회차 중단 사유다 — `python3 bin/round.py finish deploy-approve-resolve "$TOKEN"`를 **`--commit` 없이 한 번 실행한 뒤** 중단하고, 보고에는 이미 처리한 항목과 실패한 항목을 나눠 적는다. 새 답글이 없어도, 라이브에서는 lock check 뒤 가장 최신 답글 TS까지 `op:"update"` 이벤트로 `lastCheckedTs`를 전진시킨다. 내 답글이 최신이어도 그 TS를 쓴다. 항목은 활성으로 유지한다.
+보류 3종(`review-issue`, `pr-not-found`, `jira-transition`)은 Slack 스레드를 읽어 `lastCheckedTs` 이후 새 답글을 확인한다. 작성자와 무관하게 ROUTINE-CONFIG의 멱등 마커 문자열 포함 답글과 봇 메시지만 해소 근거에서 제외한다. 첫 Slack 읽기 실패는 회차 중단 사유다 — `python3 bin/round.py finish deploy-approve-resolve "$TOKEN"`를 **`--commit` 없이 한 번 실행한 뒤** 중단하고, 보고에는 이미 처리한 항목과 실패한 항목을 나눠 적는다. 새 답글이 없어도, 라이브에서는 lock check 뒤 가장 최신 답글 TS까지 `op:"update"` 이벤트로 `lastCheckedTs`를 전진시킨다. 내 답글이 최신이어도 그 TS를 쓴다. 항목은 활성으로 유지한다.
 
 새 답글이 있어 검증 대상이 처음 확정되면 `~/work/harnie/skills/comment-resolve/SKILL.md`를 읽고 해소 검증 기준으로 적용한다. 승인 재판정이 필요한 시점에는 `~/work/harnie/skills/deploy-approval/SKILL.md`도 읽고 그 시점의 기준을 적용한다. 두 문서의 본문은 복사하지 않는다.
 
@@ -78,11 +78,11 @@ ROUTINE-CONFIG를 읽어 해석한다(Jira·멱등 마커는 맥락에 없다). 
 - `review-issue`는 `prs`가 있으면 그 PR 전부, 없으면 기존 `project`·`repository`·`prId`를 재확인한다. 수정 주장을 그대로 믿지 않고 `bash bin/az deploy-approve-resolve`와 필요한 읽기 전용 로컬 commit으로 지적 파일·문제가 신규 커밋에서 실제로 다뤄졌는지 확인한다. 해명은 comment-resolve 기준으로 판정한다. PR별 판정을 모두 통과하면 PR 간 상충도 다시 보며, 상충 보류는 상충한 PR들의 새 커밋에서 기존 상충이 해소됐는지를 같은 기준으로 확인한다. 확신이 낮으면 미해소다.
 - `jira-transition`은 Jira 상태와 가능한 전이를 다시 조회한다. 연결 티켓 전부가 목표 상태 또는 그 이후이면 해소다. 전이가 가능해졌으면 전이를 시도해 해소 여부를 판정한다.
 
-위 두 PR 재판정은 `prompts/deploy-approve-intake.md` §2를 한 번 읽어 수집·`prior-review.py` 요약 재사용·미해결 `issue:`·새 커밋·직접 판정·PR 간 상충·hold 필드 규칙을 그대로 따른다(회차 시작·종료는 실행하지 않고 ADO 호출은 `deploy-approve-resolve`로 한다). PR 간 판정은 2개 이상 모두 통과했을 때만 하며, 요약 재사용 PR도 다른 서버가 소비하는 부분의 PR 전체 diff와 상대 PR 소스 commit의 소비 지점을 읽는다. 단, 순서 의존 (c) 보류는 새 커밋이나 원 메시지 수정 없이도 `lastCheckedTs` 이후 본인·봇 외 스레드 답글이 배포 순서를 명시하고 그 순서가 같은 기준으로 안전하면 해소한다. 없거나 위험하면 안전한 순서를 답글에 적고 `review-issue`로 유지한다. commit 부재는 같은 fetch-queue 규칙으로 해당 항목을 미처리로 남기며 ✅를 달지 않는다. 재판정에 따른 hold update에도 수집 PR 전부의 `prs`와 기존 단수 필드를 보존·갱신하고, 상충 PR 쌍·내용을 `holdReason`과 답글에 적는다.
+위 두 PR 재판정은 `prompts/deploy-approve-intake.md` §2를 한 번 읽어 수집·`prior-review.py` 요약 재사용·미해결 `issue:`·새 커밋·직접 판정·PR 간 상충·hold 필드 규칙을 그대로 따른다(회차 시작·종료는 실행하지 않고 ADO 호출은 `deploy-approve-resolve`로 한다). PR 간 판정은 2개 이상 모두 통과했을 때만 하며, 요약 재사용 PR도 다른 서버가 소비하는 부분의 PR 전체 diff와 상대 PR 소스 commit의 소비 지점을 읽는다. 단, 순서 의존 (c) 보류는 새 커밋이나 원 메시지 수정 없이도 `lastCheckedTs` 이후 위 제외 기준에 해당하지 않는 스레드 답글이 배포 순서를 명시하고 그 순서가 같은 기준으로 안전하면 해소한다. 없거나 위험하면 안전한 순서를 답글에 적고 `review-issue`로 유지한다. commit 부재는 같은 fetch-queue 규칙으로 해당 항목을 미처리로 남기며 ✅를 달지 않는다. 재판정에 따른 hold update에도 수집 PR 전부의 `prs`와 기존 단수 필드를 보존·갱신하고, 상충 PR 쌍·내용을 `holdReason`과 답글에 적는다.
 
-해소된 항목은 라이브에서 lock check 뒤 `sh bin/deploy-approval-react.sh <deploy_approval_channel> <messageTs>`로 봇 ✅를 단다. `slack_add_reaction`은 사용하지 않는다. 채널을 재조회해 ✅ 총수를 센다. N이 2 미만이면 멱등 마커를 포함한 사유 답글을 한 번 남긴 뒤 `reason:"reaction-quorum-not-met"`으로 close한다.
+해소된 항목은 라이브에서 lock check 뒤 `sh bin/deploy-approval-react.sh <deploy_approval_channel> <messageTs>`로 봇 ✅를 단다. `slack_add_reaction`은 사용하지 않는다. `already_reacted`는 멱등 성공이며 실패하면 전이하지 않고 항목을 미처리로 남긴다.
 
-N이 2 이상이면 모든 연결 Jira 티켓을 목표 상태 `배포승인`과 비교한다. 상태명·전이명 비교는 공백을 제거한다. 이미 목표 상태 또는 그 이후·완료인 티켓은 성공이고, 목표 전이가 있으면 lock check 뒤 전이한다. 전이가 없거나 일부 전이가 실패하면 close하지 않는다. lock check 뒤 `op:"update"`로 `holdType:"jira-transition"`, 갱신한 `holdReason`, `lastCheckedTs`를 append해 다음 회차 대상에 남긴다. 모든 연결 티켓이 목표 상태에 도달했을 때만 lock check 뒤 해소 근거 한 줄과 멱등 마커를 스레드에 남기고 `reason:"approved"`으로 close한다.
+봇 ✅ 성공 직후 모든 연결 Jira 티켓을 목표 상태 `배포승인`과 비교한다. 상태명·전이명 비교는 공백을 제거한다. 이미 목표 상태 또는 그 이후·완료인 티켓은 성공이고, 목표 전이가 있으면 lock check 뒤 전이한다. 전이가 없거나 일부 전이가 실패하면 close하지 않는다. lock check 뒤 `op:"update"`로 `holdType:"jira-transition"`, 갱신한 `holdReason`, `lastCheckedTs`를 append해 다음 회차 대상에 남긴다. 모든 연결 티켓이 목표 상태에 도달했을 때만 lock check 뒤 해소 근거 한 줄과 멱등 마커를 스레드에 남기고 `reason:"approved"`으로 close한다.
 
 미해소면 라이브에서 lock check 뒤 사유와 멱등 마커를 스레드에 한 번 남긴다. 이어 lock check 뒤 `op:"update"`로 새 `holdReason`과 이번에 확인한 최신 답글 TS의 `lastCheckedTs`를 append하고 항목을 유지한다. 답글·ADO 조회·로컬 읽기·Jira 전이·worklist 기록 실패는 해당 항목만 미처리로 남기고 다음 항목을 계속 처리한다.
 
@@ -94,4 +94,4 @@ close와 update 이벤트는 각 항목 처리 직후에만 append한다. 모든
 
 정상 경로에서는 `python3 bin/round.py finish deploy-approve-resolve "$TOKEN"`를 **한 번** 실행한다. 스크립트가 lock check → 락 해제를 한 번에 처리한다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`을 따로 부르지 않는다.
 
-한국어 보고에는 활성 항목 수, `begin`이 `worklistSkipped`를 돌려줬으면 건너뛴 깨진 줄 수, 만료 close, 새 답글 없음과 `lastCheckedTs` 전진, holdType별 해소·미해소, 봇 ✅·반응 수·Jira 전이, update·close 사유, 미처리 항목과 사유, dry-run 수행 예정 목록을 포함한다. 크리덴셜은 보고하지 않는다.
+한국어 보고에는 활성 항목 수, `begin`이 `worklistSkipped`를 돌려줬으면 건너뛴 깨진 줄 수, 만료 close, 새 답글 없음과 `lastCheckedTs` 전진, holdType별 해소·미해소, 본인 요청 처리 여부, 봇 ✅·Jira 전이, update·close 사유, 미처리 항목과 사유, dry-run 수행 예정 목록을 포함한다. 크리덴셜은 보고하지 않는다.
