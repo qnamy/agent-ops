@@ -50,6 +50,8 @@ Slack Web API를 직접 호출하는 스크립트나 curl 명령을 만들지 �
 
 Jira 접근은 Atlassian MCP 서버의 아래 도구만 쓰며 **이름을 탐색하지 않는다** — 위 Slack 절의 프로바이더별 호출 형식을 그대로 쓰되 서버명은 `atlassian`, 커넥터 접두어는 `mcp__claude_ai_Atlassian__`다(커넥터 목록에 도구가 없으면 `ToolSearch("select:mcp__claude_ai_Atlassian__getJiraIssue,mcp__claude_ai_Atlassian__getJiraIssueRemoteIssueLinks,mcp__claude_ai_Atlassian__transitionJiraIssue")`를 한 번만 부른다). 조회는 `getJiraIssue`, 원격 링크는 `getJiraIssueRemoteIssueLinks`, 전이는 `transitionJiraIssue`다. Codex(`codex_apps`)에서는 회차 시작 시 `ALL_TOOLS`를 대소문자 무시 정규식 `/(?:^|_)(getjiraissue|getjiraissueremoteissuelinks|transitionjiraissue)$/i`로 한 번만 걸러 세 도구의 실제 이름을 얻고 그 이름으로 부른다. 실측 노출 이름은 `mcp__codex_apps__atlassian_rovo__legacy__atlassian_rovo_legacy_getjiraissue`처럼 소문자다(2026-10). 대소문자를 구분하는 이름 확인이나 `typeof` 단건 확인으로 부재를 결론 내리지 않는다 — camelCase만 찾던 회차들이 도구가 있는데도 OP-1447을 27회 연속 미처리로 넘겼다(2026-10-22).
 
+Codex의 위 세 Jira 도구 결과는 원본 객체째 출력하지 않는다. `structuredContent`가 있으면 필드 전체를 `JSON.stringify`한 compact JSON 하나만, 없으면 `content`의 text만 출력한다. 단 `transitionJiraIssue`는 `isError===false`이고 응답에 이슈 key가 있을 때 성공으로 판정해 `{ok:true,key,status}`만 compact JSON으로 출력한다(`structuredContent`에서는 `issues.nodes[0]`, 없으면 content text의 반환 이슈에서 key와 `fields.status.name`을 읽는다). 오류·성공 불명은 위 전체 출력 규칙을 따른다.
+
 조회(cloudId은 ROUTINE-CONFIG, `fields=["status"]`, `expand=transitions`)로 현재 상태와 가능한 전이를 함께 얻는다. 전이 목록 전용 도구를 따로 부르지 않는다. `to.name`이 목표 상태와 일치(공백 제거 비교)하는 전이가 있을 때만 위 전이 도구로 전환한다.
 
 ## 1. 회차 시작
