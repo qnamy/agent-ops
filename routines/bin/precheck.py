@@ -449,12 +449,18 @@ def repository_names(worklist: list[dict], org: str) -> set[str]:
     fetch 대상이 통째로 비어 회차가 커밋 부재로 미처리가 된다."""
     targets = set()
     for item in worklist:
-        repository = item.get("repository")
-        project = item.get("project")
-        pull_request_id = item.get("pullRequestId") or item.get("prId")
-        if not (isinstance(repository, str) and repository and project and pull_request_id):
-            continue
-        targets.add(fetch_target(org, project, repository, pull_request_id))
+        prs = item.get("prs", [])
+        if not isinstance(prs, list):
+            prs = []
+        for pr in [item, *prs]:
+            if not isinstance(pr, dict):
+                continue
+            repository = pr.get("repository")
+            project = pr.get("project")
+            pull_request_id = pr.get("pullRequestId") or pr.get("prId")
+            if not (isinstance(repository, str) and repository and project and pull_request_id):
+                continue
+            targets.add(fetch_target(org, project, repository, pull_request_id))
     return targets
 
 

@@ -77,11 +77,11 @@ Slack 읽기는 ROUTINE-CONFIG의 `#deploy-approval` 채널에서 `oldest`를 �
 
 활성 보류 집합은 `begin` JSON의 `worklist`다 — 폴드를 다시 하지 않는다. 봇이 이미 ✅를 달았거나 활성 worklist에 같은 `"<channel>/<messageTs>"` key가 있거나 멱등 마커 보류 답글이 있으면 신규 수집 경로에서 제외한다.
 
-각 대상 메시지를 순차 처리한다 — PR 특정·판정·후속 효과를 그 메시지 안에서 끝내고 다음 메시지로 넘어간다. PR은 메시지의 직접 URL이 있으면 `bash bin/az deploy-approve-intake repos pr show`로 확정하고, 없으면 Jira를 순서대로 본다 — **먼저** `getJiraIssueRemoteIssueLinks({cloudId, issueIdOrKey})`, 그다음 `getJiraIssue({cloudId, issueIdOrKey, fields:["summary","description","project","status","customfield_10000"], expand:"transitions"})`의 본문·개발 패널. **`fields`에 `comment`를 처음부터 넣지 않는다** — 댓글이 응답의 대부분이라 회당 2.8만 자였다(2026-09-16 실측). 둘에서 못 찾았을 때만 `comment`를 넣어 다시 조회한다. 찾은 URL은 같은 `repos pr show`로 확정한다. Jira에서 못 찾은 경우에만 프로젝트·레포를 좁혀 `bash bin/az deploy-approve-intake repos pr list --project <project> [--repository <repo>] --status all --top 50`으로 후보를 찾고 필요한 필드만 query한다. 조직 전체 목록이나 대형 JSON 덤프를 하지 않는다.
+각 대상 메시지를 순차 처리한다 — PR 수집·판정·후속 효과를 그 메시지 안에서 끝내고 다음 메시지로 넘어간다. **직접 PR URL 전부와 모든 Jira KEY의 링크된 PR을 합친다.** 직접 URL이 있어도 각 KEY마다 `getJiraIssueRemoteIssueLinks({cloudId, issueIdOrKey})`, 이어 `getJiraIssue({cloudId, issueIdOrKey, fields:["summary","description","project","status","customfield_10000"], expand:"transitions"})`의 본문·개발 패널을 조회한다. 각 PR은 `bash bin/az deploy-approve-intake repos pr show`로 확정하고 `abandoned`는 제외하며, 같은 프로젝트·레포·PR id는 한 번만 센다. **합쳐 0건일 때만** `comment`를 넣어 Jira를 다시 조회하고, 그래도 0건일 때만 프로젝트·레포를 좁혀 `bash bin/az deploy-approve-intake repos pr list --project <project> [--repository <repo>] --status all --top 50`으로 후보를 찾는다. 이 경로의 PR도 같은 방식으로 확정·제외·중복 제거한다. PR을 1개 이상 확보했는데 Jira 조회 중 하나라도 도구 부재·오류로 실패하면 불완전한 집합으로 판정·✅하지 않고 메시지를 미처리로 남긴다. 보류 기록·답글 없이 다음 회차에 재시도하며, 대상 하나라도 미처리면 mark·commit을 전진시키지 않는다. `comment`는 처음부터 넣지 않으며 모든 ADO 조회는 필요한 필드만 query한다. 조직 전체 목록이나 대형 JSON 덤프를 하지 않는다.
 
-PR을 특정했으면 **코드를 보기 전에 `python3 bin/prior-review.py <project> <repository> <pullRequestId>`를 실행한다.** 세 원장(`pr-review-summary.jsonl`·`reviewedPrs`·`review-findings.jsonl`)에서 그 PR 것만 걸러 `summary`·`reviewed`·`findings`로 돌려주므로 **원장 파일을 직접 읽지 않는다** — PR 하나 때문에 88KB와 52KB를 읽었다. `summary`가 그 PR의 가장 늦은 요약 줄이다. **그 줄의 `srcCommit`이 지금 PR의 `lastMergeSourceCommit.commitId`와 같을 때만** 재사용한다 — 다르면 리뷰 이후 새 커밋이 올라온 것이므로 그 줄을 쓰지 않고 직접 판정한다. 재사용할 때는 `prefixes`에 `issue:`나 `discuss:`가 있으면 `review-issue` 보류, 없으면 리뷰 측면 통과로 보고 **코드를 다시 읽지 않는다.** 줄이 없거나 commit이 다르면 이 PR을 직접 판정한다. `pr-review-resolve`가 재투표할 때 이 원장을 갱신하므로, 해소된 지적은 가장 늦은 줄에 남지 않는다.
+수집한 **각 PR에** 아래 PR별 판정을 적용한다. **코드를 보기 전에 `python3 bin/prior-review.py <project> <repository> <pullRequestId>`를 실행한다.** 세 원장(`pr-review-summary.jsonl`·`reviewedPrs`·`review-findings.jsonl`)에서 그 PR 것만 걸러 `summary`·`reviewed`·`findings`로 돌려주므로 **원장 파일을 직접 읽지 않는다** — PR 하나 때문에 88KB와 52KB를 읽었다. `summary`가 그 PR의 가장 늦은 요약 줄이다. **그 줄의 `srcCommit`이 지금 PR의 `lastMergeSourceCommit.commitId`와 같을 때만** 재사용한다 — 다르면 리뷰 이후 새 커밋이 올라온 것이므로 그 줄을 쓰지 않고 직접 판정한다. 재사용할 때는 `prefixes`에 `issue:`나 `discuss:`가 있으면 `review-issue` 보류, 없으면 PR별 판정은 통과로 보고 **아래 PR 간 상충 판정 외에는 코드를 다시 읽지 않는다.** 줄이 없거나 commit이 다르면 이 PR을 직접 판정한다. `pr-review-resolve`가 재투표할 때 이 원장을 갱신하므로, 해소된 지적은 가장 늦은 줄에 남지 않는다.
 
-위 규칙으로도 Jira 조회 도구를 찾지 못해 PR을 특정할 수 없는 경우도 PR 특정 실패다 — 미처리로 회차를 끝내지 않고 이 절차대로 보류하며, `holdReason`에 도구 부재를 적는다. PR을 특정하지 못하면 라이브에서 lock check 뒤 스레드에 티켓을 명시한 `자동으로 특정하지 못했습니다. 수동 확인 부탁드립니다.` 답글과 ROUTINE-CONFIG의 멱등 마커를 남긴다. 답글 실패와 무관하게 lock check 뒤 worklist에 `op:"add"` 한 줄을 append한다. 이벤트는 `ts`, `op`, `key`, `by:"deploy-approve-intake"`와 기존 hold 스키마 전체(`messageTs`, `channel`, `ticketKeys`, `project`, `repository`, `prId`, `holdType:"pr-not-found"`, `holdReason`, `heldAt`, `lastCheckedTs`)를 가진다. 같은 key의 활성 항목은 중복 등록하지 않는다.
+수집 PR이 0건이면 `pr-not-found` 보류다. Jira 조회 도구 부재로 특정하지 못한 경우도 미처리로 끝내지 않고 보류하며 `holdReason`에 도구 부재를 적는다. 라이브에서 lock check 뒤 스레드에 티켓을 명시한 `자동으로 특정하지 못했습니다. 수동 확인 부탁드립니다.` 답글과 ROUTINE-CONFIG의 멱등 마커를 남긴다. 답글 실패와 무관하게 lock check 뒤 worklist에 `op:"add"` 한 줄을 append한다. 모든 hold 이벤트는 `ts`, `op`, `key`, `by:"deploy-approve-intake"`와 기존 hold 스키마 전체(`messageTs`, `channel`, `ticketKeys`, `project`, `repository`, `prId`, `holdType`, `holdReason`, `heldAt`, `lastCheckedTs`)에 `prs` 배열을 더한다. 각 원소는 `project`·`repository`·`prId`를 가지며 수집 PR 전부를 담는다. 기존 단수 필드는 PR 1개면 그 PR, 여러 개면 보류 사유가 된 첫 PR(상충이면 쌍의 첫 PR, `jira-transition`이면 `prs`의 첫 PR)을 넣는다. `pr-not-found`는 단수 필드를 비우고 `prs:[]`로 둔다. `prs` 없는 기존 활성 hold도 그대로 읽는다. 같은 key의 활성 항목은 중복 등록하지 않는다.
 
 `summary`를 재사용하지 못했으면 같은 출력의 `reviewed`·`findings`를 쓴다. `reviewed`가 있으면 해당 PR의 미해결 `issue:` 스레드를 `bash bin/az deploy-approve-intake devops invoke`로 확인하고, 남아 있으면 `review-issue`로 보류한다. 모두 해소됐으면 `pullRequestCommits`에서 `reviewedAt` 이후 새 커밋을 확인한다. 새 커밋이 없으면 기존 리뷰 기반 통과다. 새 커밋이 있으면 그 새 커밋 변경만, `reviewed`가 없으면 PR 소속 커밋 변경 전체를 아래 방식으로 판정한다.
 
@@ -89,17 +89,19 @@ PR을 특정했으면 **코드를 보기 전에 `python3 bin/prior-review.py <pr
 
 판정에 필요한 commit이 로컬에 있는지 `git --no-optional-locks -C ~/work/<repository> cat-file -e <commit>`으로 먼저 본다. 없으면 코드를 보지 않고 `commitPresent:false`로 취급해 아래 fetch-queue 규칙으로 간다. 읽기는 `git --no-optional-locks -C ~/work/<repository> diff --numstat <범위>`로 규모를 보고 `diff <범위> -- <경로>`·`show`로 필요한 구간만 읽는다 — 범위는 `reviewedAt` 이후 새 커밋이 있으면 그 새 커밋 변경만, 없으면 PR 소속 커밋 변경 전체다. fetch·clone·working tree 접근과 레포 쓰기는 금지한다.
 
-**판정은 PR 단위로 공유한다.** 서로 다른 메시지가 같은 PR을 요청하면 판정은 한 번만 하고 그 결과를 그 PR을 요청한 모든 메시지에 그대로 적용한다 — 봇 ✅·Jira 전이·worklist 기록은 메시지마다 따로 하되 판정 결과만 공유한다.
+**PR별 판정은 PR 단위로 공유한다.** 서로 다른 메시지가 같은 PR을 요청하면 PR별 판정은 한 번만 하고 그 결과를 공유한다. PR 간 상충 판정은 각 메시지의 PR 집합·배포 순서로 따로 하며, 봇 ✅·Jira 전이·worklist 기록도 메시지마다 한다.
 
 `findings`가 하나라도 있으면 `review-issue` 보류, 비어 있으면 리뷰 측면 통과다. 확신이 낮다는 `summary`는 보류 사유로 쓴다.
 
-`review-issue` 보류에서는 라이브의 lock check 뒤 지적 요약과 멱등 마커를 스레드에 한 번 남기고, 답글 성공 여부와 무관하게 같은 형식의 worklist `add`를 append한다. PR별 답글·ADO 조회·로컬 읽기·worklist 기록 실패는 해당 메시지만 미처리로 남기고 다음 메시지를 계속 처리한다.
+**PR 하나라도 보류면 메시지는 보류다. 모두 통과하고 2개 이상일 때만 PR 간 상충을 판정한다.** 입력은 각 PR의 `prior-review.py` 출력(`summary`·`findings`)과 다른 서버·레포가 소비하는 부분의 PR 전체 diff다. 요약 재사용 PR도 이 부분은 읽는다. 대상은 HTTP API 요청·응답 형태와 경로, 이벤트·메시지(큐·토픽) 스키마, 여러 서비스가 읽고 쓰는 DB 테이블·컬럼, 공유 설정 키·enum 값이다. 한 PR이 이 계약을 바꾸면 같은 메시지의 다른 PR 레포들에서 각 PR의 소스 commit 기준으로 소비 지점을 찾아 읽는다. `git --no-optional-locks -C ~/work/<repository> grep -n <식별자> <commit> -- <경로>`와 `show <commit>:<경로>`의 필요한 구간만 읽으며 수집한 PR 레포 밖은 찾지 않는다. 상대 PR diff에 소비 코드가 없다는 이유로 상충이 없다고 결론 내리지 않는다. 위와 같은 commit 확인·git 읽기·fetch-queue 규칙을 따르되 이 판정의 diff 범위는 PR 전체로 한다. (a) 한 PR이 바꾼 계약을 다른 PR이 따라오지 않거나 다르게 바꾼 경우, (b) 같은 데이터·계약을 서로 다른 의미로 바꾼 경우는 `issue:` 수준이면 보류다. (c) 모두 배포되면 맞지만 한쪽이 먼저 배포되면 깨지는 순서 의존은 요청 메시지에 명시된 순서가 안전할 때만 통과하며, 순서가 없거나 위험하면 보류하고 답글에 안전한 순서를 적는다. 확신이 낮으면 보류한다. PR 1개면 상충 판정은 대상 아님이며 PR별 통과로 끝낸다.
+
+`review-issue` 보류에서는 라이브의 lock check 뒤 지적 요약과 멱등 마커를 스레드에 한 번 남기고, 답글 성공 여부와 무관하게 같은 형식의 worklist `add`를 append한다. PR 간 상충도 새 유형 없이 `review-issue`로 기록하며 `holdReason`과 답글에 상충 PR 쌍·내용(순서 의존이면 안전한 순서)을 적는다. PR별 답글·ADO 조회·로컬 읽기·worklist 기록 실패는 해당 메시지만 미처리로 남기고 다음 메시지를 계속 처리한다.
 
 판정 통과 메시지에는 라이브에서 lock check 뒤 `sh bin/deploy-approval-react.sh <deploy_approval_channel> <messageTs>`를 실행한다. `slack_add_reaction`을 사용하지 않는다. `already_reacted`는 멱등 성공이며 토큰과 응답의 민감한 값을 보고하지 않는다. 채널을 다시 조회해 ✅ 총수를 센다. N이 2 미만이면 추적·답글 없이 끝낸다.
 
 N이 2 이상이면 연결된 모든 Jira 티켓의 상태와 가능한 전이를 조회한다. 상태명과 전이명은 공백을 제거해 목표 상태 `배포승인`과 비교한다. 이미 목표 상태 또는 그 이후·완료이면 멱등 성공이다. 목표 상태로 가는 전이가 있으면 lock check 뒤 전이한다. 전이가 없거나 일부 티켓 전이에 실패하면 우회하지 않고 `jira-transition`으로 보류한다. 라이브에서 lock check 뒤 사유와 멱등 마커를 스레드에 남기고, 답글 실패와 무관하게 hold 스키마 전체를 가진 worklist `add`를 append한다. 모든 연결 티켓이 목표 상태에 도달하면 댓글 없이 성공으로 끝낸다.
 
-`commitPresent:false`가 나오면 뒤처진 commit으로 판정하지 않는다. 라이브에서 lock check 뒤 `state/fetch-queue`에 그 레포 이름 한 줄을 append하고 해당 메시지를 미처리로 남긴 뒤 다음 메시지를 계속 처리한다. fetch·clone은 하지 않는다.
+PR별·PR 간 판정 중 하나라도 `commitPresent:false`가 나오면 뒤처진 commit으로 판정하지 않는다. 라이브에서 lock check 뒤 `state/fetch-queue`에 부재한 각 레포 이름을 한 줄씩 append하고, 다른 PR이 통과했거나 보류여도 해당 메시지는 미처리로 남겨 ✅를 달지 않은 뒤 다음 메시지를 계속 처리한다. fetch·clone은 하지 않는다.
 
 모든 대상이 성공해야 회차가 성공이다. 대상 하나의 실패는 그 대상만 미처리로 남기며, raw 0건도 성공 회차가 아니다.
 
@@ -111,7 +113,7 @@ raw 수집이 0건이 아니고 모든 대상이 성공했으며 라이브일 �
 
 정상 경로에서는 `python3 bin/round.py finish deploy-approve-intake "$TOKEN" [--commit]`를 **한 번** 실행한다. 스크립트가 lock check → 게이트 commit → 락 해제를 한 번에 처리한다. `--commit`은 모든 대상과 상태 기록이 성공했고 라이브일 때만 붙인다. dry-run, raw 0건 가드, 미처리 대상, 또는 상태 기록 실패에서는 commit하지 않는다. `error`가 `lock-lost`면 소유권을 잃은 것이라 아무것도 하지 않았다는 뜻이다. `lock.sh release`·`precheck.py commit`을 따로 부르지 않는다.
 
-한국어 보고에는 조회 창·96시간 캡·페이지 수·raw 0건 여부, `begin`이 `worklistSkipped`를 돌려줬으면 건너뛴 깨진 줄 수, 감지·제외·미처리 메시지와 사유, PR 특정·기존 리뷰 스킵·새 커밋 검토·보류 유형, 봇 ✅·반응 수·Jira 전이·worklist·fetch queue·mark·commit 여부와 dry-run 수행 예정 목록을 남긴다. 크리덴셜은 보고하지 않는다.
+한국어 보고에는 조회 창·96시간 캡·페이지 수·raw 0건 여부, `begin`이 `worklistSkipped`를 돌려줬으면 건너뛴 깨진 줄 수, 감지·제외·미처리 메시지와 사유, 메시지별 수집 PR 수·PR 간 상충 판정 결과(대상 아님/통과/보류 사유), PR 특정·기존 리뷰 스킵·새 커밋 검토·보류 유형, 봇 ✅·반응 수·Jira 전이·worklist·fetch queue·mark·commit 여부와 dry-run 수행 예정 목록을 남긴다. 크리덴셜은 보고하지 않는다.
 
 ## 보류 등록의 고정 규칙
 

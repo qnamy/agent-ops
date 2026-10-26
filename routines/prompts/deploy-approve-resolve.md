@@ -72,9 +72,11 @@ ROUTINE-CONFIG를 읽어 해석한다(Jira·멱등 마커는 맥락에 없다). 
 
 새 답글이 있어 검증 대상이 처음 확정되면 `~/work/harnie/skills/comment-resolve/SKILL.md`를 읽고 해소 검증 기준으로 적용한다. 승인 재판정이 필요한 시점에는 `~/work/harnie/skills/deploy-approval/SKILL.md`도 읽고 그 시점의 기준을 적용한다. 두 문서의 본문은 복사하지 않는다.
 
-- `pr-not-found`는 답글에서 PR URL·번호를 추출한 뒤 intake와 같은 PR 특정·기존 리뷰 스킵·새 커밋 검토 규칙으로 다시 판정한다. PR 정보가 없거나 issue 수준의 차단이 남으면 미해소다.
-- `review-issue`는 수정 주장을 그대로 믿지 않는다. `bash bin/az deploy-approve-resolve`와 필요한 읽기 전용 로컬 commit으로 지적 파일·문제가 신규 커밋에서 실제로 다뤄졌는지 확인한다. 해명은 comment-resolve 기준으로 타당성을 판정하고, 확신이 낮으면 미해소다.
+- `pr-not-found`는 원 요청과 답글의 PR URL·번호, 모든 Jira KEY를 대상으로 intake와 같은 PR 수집·PR별 판정·PR 간 상충 판정을 한다. 직접 URL이 있어도 모든 KEY의 원격 링크·본문·개발 패널 PR을 합치고, 0건일 때만 comment 재조회·ADO 후보 검색 순으로 간다. 각 PR을 확정해 abandoned 제외·중복 제거한다. 아래 공통 규칙을 적용하며 PR 0건이거나 차단이 남으면 미해소다.
+- `review-issue`는 `prs`가 있으면 그 PR 전부, 없으면 기존 `project`·`repository`·`prId`를 재확인한다. 수정 주장을 그대로 믿지 않고 `bash bin/az deploy-approve-resolve`와 필요한 읽기 전용 로컬 commit으로 지적 파일·문제가 신규 커밋에서 실제로 다뤄졌는지 확인한다. 해명은 comment-resolve 기준으로 판정한다. PR별 판정을 모두 통과하면 PR 간 상충도 다시 보며, 상충 보류는 상충한 PR들의 새 커밋에서 기존 상충이 해소됐는지를 같은 기준으로 확인한다. 확신이 낮으면 미해소다.
 - `jira-transition`은 Jira 상태와 가능한 전이를 다시 조회한다. 연결 티켓 전부가 목표 상태 또는 그 이후이면 해소다. 전이가 가능해졌으면 전이를 시도해 해소 여부를 판정한다.
+
+위 두 PR 재판정은 `prompts/deploy-approve-intake.md` §2를 한 번 읽어 수집·`prior-review.py` 요약 재사용·미해결 `issue:`·새 커밋·직접 판정·PR 간 상충·hold 필드 규칙을 그대로 따른다(회차 시작·종료는 실행하지 않고 ADO 호출은 `deploy-approve-resolve`로 한다). PR 간 판정은 2개 이상 모두 통과했을 때만 하며, 요약 재사용 PR도 다른 서버가 소비하는 부분의 PR 전체 diff와 상대 PR 소스 commit의 소비 지점을 읽는다. 단, 순서 의존 (c) 보류는 새 커밋이나 원 메시지 수정 없이도 `lastCheckedTs` 이후 본인·봇 외 스레드 답글이 배포 순서를 명시하고 그 순서가 같은 기준으로 안전하면 해소한다. 없거나 위험하면 안전한 순서를 답글에 적고 `review-issue`로 유지한다. commit 부재는 같은 fetch-queue 규칙으로 해당 항목을 미처리로 남기며 ✅를 달지 않는다. 재판정에 따른 hold update에도 수집 PR 전부의 `prs`와 기존 단수 필드를 보존·갱신하고, 상충 PR 쌍·내용을 `holdReason`과 답글에 적는다.
 
 해소된 항목은 라이브에서 lock check 뒤 `sh bin/deploy-approval-react.sh <deploy_approval_channel> <messageTs>`로 봇 ✅를 단다. `slack_add_reaction`은 사용하지 않는다. 채널을 재조회해 ✅ 총수를 센다. N이 2 미만이면 멱등 마커를 포함한 사유 답글을 한 번 남긴 뒤 `reason:"reaction-quorum-not-met"`으로 close한다.
 
