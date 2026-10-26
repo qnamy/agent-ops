@@ -619,6 +619,63 @@ def lock_held(automation: str) -> bool:
     return time.time() - acquired <= 1800
 
 
+def ended_runs(automation: str, owner: int) -> list[dict]:
+    def query(*args):
+        result = subprocess.run(["orca", "automations", *args, "--json"],
+                                capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise ValueError("Orca query failed")
+        payload = json.loads(result.stdout)
+        if payload["ok"] is not True:
+            raise ValueError("Orca query failed")
+        return payload["result"]
+
+    automations = query("list")["automations"]
+    if not isinstance(automations, list):
+        raise ValueError("Orca automations is not an array")
+    matches = [item for item in automations if item["name"] == automation]
+    if len(matches) != 1 or not isinstance(matches[0]["id"], str) or not matches[0]["id"]:
+        return []
+    automation_id = matches[0]["id"]
+    runs = query("runs", "--id", automation_id)["runs"]
+    if not isinstance(runs, list):
+        raise ValueError("Orca runs is not an array")
+    dispatched_runs = []
+    for run in runs:
+        if run["automationId"] != automation_id:
+            raise ValueError("Orca run belongs to another automation")
+        dispatched = run["dispatchedAt"]
+        if dispatched is None:
+            continue
+        if type(dispatched) is not int:
+            raise ValueError("Orca dispatchedAt is not an epoch in milliseconds")
+        if (run.get("status") not in ("completed", "dispatch_failed")
+                or type(run.get("runNumber")) is not int):
+            return []
+        dispatched_runs.append(run)
+    if not any(run["dispatchedAt"] <= owner * 1000 for run in dispatched_runs):
+        return []
+    return dispatched_runs
+
+
+def release_abandoned_lock(automation: str) -> bool:
+    try:
+        owner = (STATE_ROOT / "locks" / f"{automation}.lock" / "owner").read_text().strip()
+        runs = ended_runs(automation, int(owner))
+        if not runs:
+            return False
+        released = subprocess.run([str(SCRIPT_DIR / "lock.sh"), "release", automation, owner],
+                                  env={**os.environ, "ROUTINE_STATE_ROOT": str(STATE_ROOT)},
+                                  capture_output=True, text=True, check=False)
+        if released.returncode != 0:
+            return False
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return False
+    latest = max(runs, key=lambda run: run["dispatchedAt"])
+    log(f"stale-lock-released owner={owner} run={latest['runNumber']} status={latest['status']}")
+    return True
+
+
 def committed_path(automation: str) -> Path:
     return GATE_DIR / f"{automation}.json"
 
@@ -1021,7 +1078,8 @@ def main(arguments: list[str]) -> int:
         if len(arguments) != 1:
             raise ValueError("usage: precheck.py <automation> | commit <automation>")
         automation = arguments[0]
-        if automation in AUTOMATIONS and lock_held(automation):
+        if (automation in AUTOMATIONS and lock_held(automation)
+                and not release_abandoned_lock(automation)):
             print(f"SKIP {automation} reason=lock-held")
             return SKIP_EXIT
         should_run, reason, repositories = decide(automation)
