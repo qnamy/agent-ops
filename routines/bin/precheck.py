@@ -221,7 +221,8 @@ def slack_latest_ts(token: str, channel: str) -> str:
 
 
 def slack_channel_signal(
-    token: str, channel: str, oldest: str | None = None, committed: str | None = None
+    token: str, channel: str, oldest: str | None = None, committed: str | None = None,
+    review_config: str | None = None,
 ) -> tuple[str, dict]:
     """게이트 신호와 fetch 대상을 각각 다른 조회로 얻는다.
 
@@ -240,6 +241,9 @@ def slack_channel_signal(
     같은 메시지들이 매 회차 다시 대상이 되어 `pr show` 예산을 먹고 새 PR을
     뒤로 민다(라이브락). cap된 회차에는 넘긴 메시지만 남아 큐가 회차마다 준다.
     """
+    if review_config is not None:
+        excluded_users = {config_slack_user(review_config), config_bot_user(review_config)}
+        mentions = config_mentions(review_config)
     latest = slack_latest_ts(token, channel)
     if latest == "no-messages":
         return "no-messages", {}
@@ -263,6 +267,11 @@ def slack_channel_signal(
                 message_ts = str(message.get("ts") or "")
                 if floor and message_ts and message_ts <= floor:
                     continue
+                if review_config is not None:
+                    if message.get("user") in excluded_users:
+                        continue
+                    if not any(mention in message.get("text", "") for mention in mentions):
+                        continue
                 for org, project, repository, pull_request_id in PR_URL.findall(message.get("text", "")):
                     targets[fetch_target(org, project, repository, pull_request_id)] = message_ts
         cursor = (payload.get("response_metadata") or {}).get("next_cursor")
@@ -639,10 +648,14 @@ def intake_gate(automation: str, channel_name: str) -> tuple[bool, str, set[str]
     channel = config_channel(config, channel_name)
     committed = stored_slack(automation, channel)
     signal, targets = slack_channel_signal(
-        bot_token(), channel, intake_window_oldest(automation), committed
+        bot_token(), channel, intake_window_oldest(automation), committed,
+        review_config=config if automation == "pr-review-intake" else None,
     )
     save_json(pending_path(automation), pending_slack(channel, signal))
     if signal != committed:
+        if (automation == "pr-review-intake" and not targets
+                and (STATE_ROOT / "live" / f"{automation}.enabled").exists()):
+            return False, "no-targets", set()
         # 계약: 루틴 실행 전에 PR별 상태를 API로 확인해 세션에 전달한다(R-06).
         # 세션이 기동 후 `repos pr show`를 다시 부르지 않게 하고, 착수 투표 전에
         # completed/abandoned를 구분할 수 있게 한다.
